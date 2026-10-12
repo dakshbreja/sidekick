@@ -4,6 +4,8 @@ import {calendarImport} from './calendar-import.js';
 import {PAGE, CLIENT_SCRIPT, STYLE} from './ui.js';
 import {WRITE_MODULE} from './write-intent.js';
 import {TEXT_IMPORT_MODULE} from './text-import.js';
+import {googleConfigured,GOOGLE_CALLBACK_PATH} from './google-oauth.js';
+import {handleGoogleRoute,googleCallbackRedirect} from './google-routes.js';
 export {StudentState} from './student-object.js';
 
 const routes = Object.freeze({
@@ -42,12 +44,13 @@ export default {
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
       }
+      if(path.startsWith('/api/google/')) return await handleGoogleRoute({request,url,env,identity,student});
       if(path==='/api/onboarding' && request.method==='GET') {
         queryData(url,[]);
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
         return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
-          connections:results[2].records,capabilities});
+          connections:results[2].records,capabilities:{...capabilities,google_calendar_oauth:googleConfigured(env)}});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));
@@ -78,6 +81,7 @@ export default {
       }
       throw new HttpError(route?'method_not_allowed':'not_found',route?405:404);
     } catch(error) {
+      if(path===GOOGLE_CALLBACK_PATH) return googleCallbackRedirect(false);
       const safe=typeof error.code==='string' && /^[a-z_]{1,80}$/.test(error.code);
       return json({ok:false,error:safe?error.code:'service_unavailable'},safe&&Number.isInteger(error.status)?error.status:503);
     }

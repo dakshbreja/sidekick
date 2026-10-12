@@ -32,6 +32,31 @@ try{
  assert.match(await page.locator('#connections').innerText(),/Needs authorization/);
  const course=await page.locator('#material-form [name=course_id] option').nth(1).getAttribute('value');
  const source=await page.locator('#source-select option').nth(1).getAttribute('value');
+ // Render the opt-in consent UI with synthetic route responses. Backend
+ // callback/credential behavior is separately tested against actual workerd.
+ let googleState={connection_id:source,revision:0,status:'needs_authorization',authorized:false,live_sync:false,last_successful_sync:null};
+ let consentPacket,disconnectPacket,googleNavigations=0;
+ await page.route('**/api/onboarding',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch();const body=await response.json();body.capabilities.google_calendar_oauth=true;await route.fulfill({response,json:body});});
+ await page.route('**/api/google/status?*',route=>route.fulfill({json:{ok:true,connection:googleState}}));
+ await page.route('**/api/google/prepare',route=>route.fulfill({json:{ok:true}}));
+ await page.route('**/api/google/begin',route=>{consentPacket=route.request().postDataJSON();return route.fulfill({json:{ok:true,authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?state=example-synthetic-state'}});});
+ await page.route('**/api/google/disconnect',route=>{disconnectPacket=route.request().postDataJSON();googleState={...googleState,status:'disconnected',authorized:false,revision:4};return route.fulfill({json:{ok:true,connection:googleState}});});
+ await page.route('https://accounts.google.com/**',route=>{googleNavigations++;return route.fulfill({contentType:'text/html',body:'Synthetic consent navigation captured; no provider contacted.'});});
+ await page.reload();await ready();
+ await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Review and check'));assert.equal(googleNavigations,0);
+ await page.getByRole('checkbox',{name:/Allow read-only access/}).check();
+ await page.screenshot({path:join(evidence,'google-consent-preview.png'),fullPage:true});
+ await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).click();await page.waitForURL('https://accounts.google.com/**');assert.equal(googleNavigations,1);
+ assert.equal(consentPacket.connection_id,source);assert.equal(consentPacket.expected_revision,0);assert.equal(typeof consentPacket.attempt_id,'string');
+ googleState={...googleState,status:'authorized_not_synced',authorized:true,revision:3};
+ await page.goto(root);await ready();assert.match(await page.locator('#connections').innerText(),/Authorized; calendar selection and automatic collection are not available yet/);
+ await page.getByRole('button',{name:'Remove saved Google access',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved Google access removed locally'));
+ assert.equal(disconnectPacket.expected_revision,3);assert.match(await page.locator('#connections').innerText(),/Saved access removed/);
+ for(const pattern of ['**/api/onboarding','**/api/google/status?*','**/api/google/prepare','**/api/google/begin','**/api/google/disconnect','https://accounts.google.com/**'])await page.unroute(pattern);
+ await page.reload();await ready();
+ passed.push('synthetic consent UI: explicit permission, bounded Google destination, unsynced status and local-disconnect wording');
  const calendarDate=offset=>new Date(Date.now()+7*86400000+offset).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');
  const ics=title=>`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-event\r\nDTSTART:${calendarDate(0)}\r\nDTEND:${calendarDate(3600000)}\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
  for(const title of ['Synthetic first event','Synthetic replacement event']){

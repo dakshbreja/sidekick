@@ -28,11 +28,12 @@ function token(value) {
   return value;
 }
 function credentials(value, now) {
-  object(value, ['access_token', 'refresh_token', 'expires_at', 'scopes']);
+  object(value, ['access_token', 'refresh_token', 'expires_at', 'refresh_expires_at', 'scopes']);
   if (!Number.isSafeInteger(value.expires_at) || value.expires_at <= now || value.expires_at > now + 86400000 ||
       !Array.isArray(value.scopes) || value.scopes.length !== GOOGLE_CALENDAR_SCOPES.length ||
       new Set(value.scopes).size !== value.scopes.length || !GOOGLE_CALENDAR_SCOPES.every(scope => value.scopes.includes(scope))) fail('invalid_provider_credentials');
-  return { access_token: token(value.access_token), refresh_token: token(value.refresh_token), expires_at: value.expires_at, scopes: [...GOOGLE_CALENDAR_SCOPES] };
+  if (value.refresh_expires_at !== undefined && (!Number.isSafeInteger(value.refresh_expires_at) || value.refresh_expires_at <= now || value.refresh_expires_at > now + 315360000000)) fail('invalid_provider_credentials');
+  return { access_token: token(value.access_token), refresh_token: token(value.refresh_token), expires_at: value.expires_at, scopes: [...GOOGLE_CALENDAR_SCOPES], ...(value.refresh_expires_at === undefined ? {} : { refresh_expires_at: value.refresh_expires_at }) };
 }
 
 /** Shares the student's SQL transaction boundary, not its public record space. */
@@ -164,6 +165,17 @@ export class GoogleConnectionState {
       if (normalized.expires_at <= this.#now()) fail('invalid_provider_credentials');
       const { lease_hash, lease_expires_at, ...rest } = current;
       const next = { ...rest, status: 'authorized_not_synced', revision: current.revision + 1, tokens: sealed };
+      this.#save(meta, next);
+      return this.#status(next);
+    });
+  }
+  async failAuthorization(tenantId, input) {
+    object(input, ['connectionId', 'generation', 'lease', 'denied']);
+    const connectionId = id(input.connectionId), generation = revision(input.generation), leaseHash = await digest(opaque(input.lease));
+    if (typeof input.denied !== 'boolean') fail('invalid_value');
+    return this.#transaction(tenantId, meta => {
+      const current = this.#get(connectionId); this.#requireLease(current, generation, leaseHash);
+      const next = { id: connectionId, revision: current.revision + 1, generation, status: input.denied ? 'authorization_denied' : 'authorization_failed', attempt_id: current.attempt_id, request_hash: current.request_hash };
       this.#save(meta, next);
       return this.#status(next);
     });
