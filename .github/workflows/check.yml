@@ -19,3 +19,26 @@ jobs:
         env:
           CI: 'true'
           WRANGLER_SEND_METRICS: 'false'
+      - name: Locate installed Chromium browser
+        run: |
+          browser_executable=$(command -v chromium || command -v google-chrome || command -v chromium-browser) || {
+            echo 'Rendered QA requires an installed Chromium or Google Chrome executable.'
+            exit 1
+          }
+          echo "BROWSER_EXECUTABLE=$browser_executable" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/school-bridge-config"
+      - name: Rendered synthetic onboarding and recovery
+        run: npm run test:browser
+        env:
+          CI: 'true'
+          WRANGLER_SEND_METRICS: 'false'
+          XDG_CONFIG_HOME: ${{ runner.temp }}/school-bridge-config
+          BROWSER_EVIDENCE_DIR: ${{ runner.temp }}/school-bridge-browser-evidence
+      - name: Retain synthetic browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: synthetic-browser-evidence
+          path: ${{ runner.temp }}/school-bridge-browser-evidence
+          if-no-files-found: ignore
+          retention-days: 7

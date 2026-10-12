@@ -35,10 +35,10 @@ export default {
       const dispatch=async(op,data={},packet={})=>student.dispatch({tenantId:identity.tenantId,op,data,...packet});
       const respond=result=>json(result,result.ok?200:result.status||400);
       if(!['GET','PUT','POST','DELETE'].includes(request.method)) throw new HttpError('method_not_allowed',405);
+      const expectedWorkspace=request.headers.get('X-Workspace-Id');
+      if(expectedWorkspace && expectedWorkspace!==identity.tenantId) throw new HttpError('workspace_changed',403);
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
-        const expectedWorkspace=request.headers.get('X-Workspace-Id');
-        if(expectedWorkspace && expectedWorkspace!==identity.tenantId) throw new HttpError('workspace_changed',403);
       }
       if(path==='/api/onboarding' && request.method==='GET') {
         queryData(url,[]);
@@ -50,7 +50,7 @@ export default {
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));
       }
-      if(path==='/api/account/export' && request.method==='GET') {queryData(url,[]);return respond(await dispatch('account.export'));}
+      if(path==='/api/account/export' && request.method==='GET') {queryData(url,[]);return respond({...await dispatch('account.export'),workspace_id:identity.tenantId});}
       if(path==='/api/account' && request.method==='DELETE') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('account.delete',packet.data,packet));
       }
