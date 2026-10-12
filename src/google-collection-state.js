@@ -1,5 +1,6 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 // Internal durable collection state. No provider calls, alarms or public routes.
+import {projectGoogleEvents} from './google-projection.js';
 import { fail, id } from './validation.js';
 import { validateGoogleEventPage } from './google-calendar.js';
 export const COLLECTION_LIMITS = Object.freeze({ leaseMs:60000, intervalMs:900000, runMs:86400000, pages:500, calendarEvents:10000, workspaceEvents:20000, workspaceBytes:8000000, failures:8 });
@@ -141,6 +142,16 @@ export class GoogleCollectionState {
       const selection=this.store.getRecord('google_selection',connectionId);
       if(!selection || !this.store.activeGoogleConnection(connectionId,selection.connection_generation))return {active:false,calendars:[]};
       return {active:true,calendars:selection.calendar_ids.map(calendarId=>{const row=this.row(connectionId,calendarId),name=selection.calendars.find(calendar=>calendar.id===calendarId)?.summary||'Unnamed calendar';return {name,...(row?publicState(row,this.now()):{connection_id:connectionId,calendar_id:calendarId,status:'queued',snapshot_complete:false,last_successful_sync:null,freshness:'never_synced',error:null,retry_at:null,recurrence_expanded:false})};})};
+    });
+  }
+  upcoming(tenant,{connectionId,calendarId}) {
+    return this.transaction(tenant,()=>{
+      this.selected(connectionId,calendarId);const row=this.row(connectionId,calendarId);
+      const timezone=this.store.getRecord('profile','profile')?.timezone||'UTC';
+      const records=row?.last_successful_sync?this.store.sql.exec('SELECT body FROM google_events WHERE connection_id=? AND calendar_id=? ORDER BY event_id',connectionId,calendarId).toArray().map(item=>JSON.parse(item.body)):[];
+      const projection=projectGoogleEvents(records,{now:this.now(),timezone});
+      if(!row?.last_successful_sync){projection.coverage.complete=false;projection.coverage.warnings.push({code:'not_synced',count:1});}
+      return {...(row?publicState(row,this.now()):{snapshot_complete:false,snapshot_id:null,last_successful_sync:null,freshness:'never_synced',status:'queued'}),...projection};
     });
   }
   snapshot(tenant,{connectionId,calendarId,limit=100,cursor=null,snapshotId}) {

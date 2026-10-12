@@ -77,6 +77,10 @@ export class StudentState extends DurableObject {
         }
         return {ok:true,connection};
       }
+      if(op==='upcoming'){
+        if(!collectionEnabled(this.env))return {ok:false,error:'google_collection_disabled',status:409};
+        object(data,['connectionId','calendarId']);return {ok:true,...this.collection.upcoming(tenantId,data)};
+      }
       if(op==='events'){
         if(!collectionEnabled(this.env))return {ok:false,error:'google_collection_disabled',status:409};
         object(data,['connectionId','calendarId','limit','cursor','snapshotId']);

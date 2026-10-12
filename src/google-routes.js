@@ -38,6 +38,9 @@ export async function handleGoogleRoute({ request, url, env, identity, student }
     const query = queryData(url, ['connection_id', 'page_token']);
     return respond(await call('calendars', { connectionId: id(query.connection_id), ...(query.page_token === undefined ? {} : { pageToken: query.page_token }) }));
   }
+  if(url.pathname==='/api/google/upcoming' && request.method==='GET'){
+    const query=queryData(url,['connection_id','calendar_id']);return respond(await call('upcoming',{connectionId:id(query.connection_id),calendarId:query.calendar_id}));
+  }
   if(url.pathname==='/api/google/events' && request.method==='GET'){
     const query=queryData(url,['connection_id','calendar_id','limit','cursor','snapshot_id']);
     if(query.limit!==undefined && !/^[1-9][0-9]{0,2}$/.test(query.limit))throw new HttpError('invalid_collection_read');

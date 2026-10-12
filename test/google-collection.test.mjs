@@ -148,3 +148,9 @@ test('competing staging reservations back off durably without partial copies or 
  assert.equal(f.collection.snapshot(A,{connectionId:'google_a',calendarId:'calendar_b'}).events.length,2);
  f.advance(1000);f.collection.failure(A,f.claim(),{code:'calendar_collection_limit'});f.advance(59000);assert.equal(f.claim('calendar_b').kind,'page');
 });
+
+test('upcoming projection reads one complete owned snapshot with freshness and separate coverage',async t=>{
+ const f=await setup(t);let r=f.collection.upcoming(A,{connectionId:'google_a',calendarId:'calendar_a'});assert.equal(r.coverage.complete,false);assert.equal(r.snapshot_complete,false);
+ await f.collection.commit(A,f.claim(),page([event('weekly',{recurrence:['RRULE:FREQ=WEEKLY;COUNT=3']})]));r=f.collection.upcoming(A,{connectionId:'google_a',calendarId:'calendar_a'});assert.equal(r.events.length,3);assert.equal(r.recurrence_expanded,true);assert.equal(r.representation,'projected_occurrences');assert.equal(r.coverage.complete,true);assert.equal(r.snapshot_complete,true);assert.equal(r.freshness,'recent');assert.equal(r.events[0].start,'2026-10-12');assert.doesNotMatch(JSON.stringify(r),/example-sync|lease|token/);
+ throws(()=>f.collection.upcoming(B,{connectionId:'google_a',calendarId:'calendar_a'}),'owner_mismatch');f.advance(COLLECTION_LIMITS.intervalMs);const claim=f.claim();await f.collection.commit(A,claim,page([event('new')],{next:'example-next'}));assert.equal(f.collection.upcoming(A,{connectionId:'google_a',calendarId:'calendar_a'}).events.length,3);f.disconnect();throws(()=>f.collection.upcoming(A,{connectionId:'google_a',calendarId:'calendar_a'}),'google_access_changed');
+});
