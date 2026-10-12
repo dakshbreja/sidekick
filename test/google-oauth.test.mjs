@@ -72,3 +72,27 @@ test('deployment defaults redact query strings and disable automatic request log
   assert.equal(config.observability.traces.enabled, false);
   assert.notEqual(config.vars.GOOGLE_OAUTH_ENABLED, 'true');
 });
+
+test('refresh preserves omitted refresh token, scope and expiry; accepts an explicit token replacement', async () => {
+  const config = googleConfiguration(env()), previous = { refresh_token: 'example-old-refresh-token', scopes: [...GOOGLE_CALENDAR_SCOPES], refresh_expires_at: 9000000 };
+  let requests = 0;
+  const client = createGoogleOAuthClient({ clock: () => 1000, fetcher: async (url, options) => {
+    requests++; const form = new URLSearchParams(options.body);
+    assert.equal(form.get('grant_type'), 'refresh_token'); assert.equal(form.get('refresh_token'), previous.refresh_token); assert.equal(form.has('code'), false);
+    return Response.json({ access_token: 'example-new-access-token', token_type: 'Bearer', expires_in: 3600, ...(requests === 2 ? { refresh_token: 'example-rotated-refresh-token' } : {}) });
+  } });
+  const first = await client.refresh(config, previous);
+  assert.equal(first.refresh_token, previous.refresh_token); assert.deepEqual(first.scopes, previous.scopes); assert.equal(first.refresh_expires_at, previous.refresh_expires_at);
+  assert.equal((await client.refresh(config, previous)).refresh_token, 'example-rotated-refresh-token'); assert.equal(requests, 2);
+});
+
+test('refresh distinguishes revoked grants and honors numeric and date Retry-After without retrying', async () => {
+  const config = googleConfiguration(env()), previous = { refresh_token: 'example-refresh-token', scopes: [...GOOGLE_CALENDAR_SCOPES] };
+  await rejected(createGoogleOAuthClient({ fetcher: async () => Response.json({ error: 'invalid_grant' }, { status: 400 }) }).refresh(config, previous), 'google_reauthorization_required');
+  await rejected(createGoogleOAuthClient({ clock: () => 1000, fetcher: async () => { throw new Error('must not fetch'); } }).refresh(config, { ...previous, refresh_expires_at: 1000 }), 'google_reauthorization_required');
+  for (const [header, expected] of [['120', 120], ['Thu, 01 Jan 1970 00:02:01 GMT', 120]]) {
+    let count = 0;
+    await assert.rejects(createGoogleOAuthClient({ clock: () => 1000, fetcher: async () => { count++; return new Response('not JSON', { status: 429, headers: { 'Retry-After': header } }); } }).refresh(config, previous), error => error.code === 'google_refresh_unavailable' && error.retryAfterSeconds === expected);
+    assert.equal(count, 1);
+  }
+});

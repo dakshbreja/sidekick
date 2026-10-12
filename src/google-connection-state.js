@@ -7,7 +7,7 @@ import { sealCredential, openCredential } from './credential-envelope.js';
 import { GOOGLE_CALENDAR_SCOPES } from './google-calendar.js';
 import { fail, id, object, operationId, revision, string } from './validation.js';
 
-export const GOOGLE_STATE_LIMITS = Object.freeze({ connections: 8, pendingMs: 600000, exchangeMs: 60000 });
+export const GOOGLE_STATE_LIMITS = Object.freeze({ connections: 8, pendingMs: 600000, exchangeMs: 60000, refreshMs: 60000, refreshSkewMs: 60000 });
 const random = () => base64url.encode(crypto.getRandomValues(new Uint8Array(32)));
 const digest = async value => base64url.encode(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))));
 const sameDigest = (a, b) => typeof a === 'string' && typeof b === 'string' && a.length === 43 && b.length === 43 && timingSafeEqual(new TextEncoder().encode(a), new TextEncoder().encode(b));
@@ -73,8 +73,9 @@ export class GoogleConnectionState {
   #status(row) {
     const expired = row && ((row.status === 'authorizing' && row.expires_at <= this.#now()) || (row.status === 'exchanging' && row.lease_expires_at <= this.#now()));
     return { connection_id: row?.id, revision: row?.revision ?? 0, generation: row?.generation ?? 0,
-      status: expired ? 'authorization_expired' : row?.status ?? 'needs_authorization',
-      authorized: row?.status === 'authorized_not_synced', live_sync: false, last_successful_sync: null };
+      status: expired ? 'authorization_expired' : row?.status === 'authorized_not_synced' && row.refresh_expires_at && row.refresh_expires_at <= this.#now() ? 'reauthorization_required' : row?.refresh_lease && row.refresh_lease.expires_at > this.#now() ? 'refreshing' : row?.status ?? 'needs_authorization',
+      authorized: row?.status === 'authorized_not_synced' && !(row.refresh_expires_at && row.refresh_expires_at <= this.#now()), live_sync: false, last_successful_sync: null,
+      ...(row?.refresh_error ? { refresh_error: row.refresh_error, retry_at: row.refresh_retry_at } : {}) };
   }
   status(tenantId, connectionId) {
     id(connectionId);
@@ -107,7 +108,7 @@ export class GoogleConnectionState {
       if ((old?.revision ?? 0) !== expectedRevision) fail('revision_conflict', 409);
       // Reauthorization is explicit: disconnect first rather than silently
       // destroying an existing usable credential set on another tab's click.
-      if (old?.status === 'authorized_not_synced') fail('disconnect_required', 409);
+      if (old?.status === 'authorized_not_synced' && !(old.refresh_expires_at && old.refresh_expires_at <= this.#now())) fail('disconnect_required', 409);
       return old;
     });
     if (previous?.attempt_id === attemptId) return this.#intent(tenantId, previous);
@@ -162,9 +163,9 @@ export class GoogleConnectionState {
     return this.#transaction(tenantId, meta => {
       const current = this.#get(connectionId); this.#requireLease(current, generation, leaseHash);
       // Expiry may have passed while awaiting encryption.
-      if (normalized.expires_at <= this.#now()) fail('invalid_provider_credentials');
+      if (normalized.expires_at <= this.#now() || normalized.refresh_expires_at !== undefined && normalized.refresh_expires_at <= this.#now()) fail('invalid_provider_credentials');
       const { lease_hash, lease_expires_at, ...rest } = current;
-      const next = { ...rest, status: 'authorized_not_synced', revision: current.revision + 1, tokens: sealed };
+      const next = { ...rest, status: 'authorized_not_synced', revision: current.revision + 1, tokens: sealed, token_revision: 1, refresh_expires_at: normalized.refresh_expires_at ?? null };
       this.#save(meta, next);
       return this.#status(next);
     });
@@ -178,6 +179,93 @@ export class GoogleConnectionState {
       const next = { id: connectionId, revision: current.revision + 1, generation, status: input.denied ? 'authorization_denied' : 'authorization_failed', attempt_id: current.attempt_id, request_hash: current.request_hash };
       this.#save(meta, next);
       return this.#status(next);
+    });
+  }
+  #requireActive(row, generation, tokenRevision) {
+    if (!row || row.status !== 'authorized_not_synced' || !row.tokens || row.generation !== generation || (row.token_revision ?? 1) !== tokenRevision) fail('google_access_changed', 409);
+  }
+  #refreshLease(row, generation, tokenRevision, leaseHash) {
+    this.#requireActive(row, generation, tokenRevision);
+    if (!row.refresh_lease || !sameDigest(row.refresh_lease.hash, leaseHash) || row.refresh_lease.expires_at <= this.#now()) fail('google_refresh_stale', 409);
+  }
+  #invalidate(meta, current) {
+    const next = { id: current.id, revision: current.revision + 1, generation: current.generation + 1, status: 'reauthorization_required' };
+    this.#save(meta, next);
+    return this.#status(next);
+  }
+  // Internal only. A ready access token or refresh claim must never cross RPC.
+  async acquireAccess(tenantId, input) {
+    object(input, ['connectionId', 'rejectedTokenRevision']);
+    const connectionId = id(input.connectionId);
+    if (input.rejectedTokenRevision !== undefined) revision(input.rejectedTokenRevision);
+    const previous = this.#transaction(tenantId, () => {
+      const row = this.#get(connectionId);
+      if (!row || row.status !== 'authorized_not_synced' || !row.tokens) fail('google_reauthorization_required', 409);
+      return row;
+    });
+    const tokens = await openCredential(this.#key, this.#binding(tenantId, previous, 'google_tokens'), previous.tokens);
+    const lease = random(), leaseHash = await digest(lease);
+    return this.#transaction(tenantId, meta => {
+      const current = this.#get(connectionId), tokenRevision = previous.token_revision ?? 1;
+      this.#requireActive(current, previous.generation, tokenRevision);
+      const now = this.#now();
+      if (tokens.refresh_expires_at !== undefined && tokens.refresh_expires_at <= now) { this.#invalidate(meta, current); return { kind: 'reauthorize' }; }
+      if (current.refresh_lease && current.refresh_lease.expires_at > now) return { kind: 'wait', retry_at: current.refresh_lease.expires_at };
+      if (current.refresh_retry_at > now) return { kind: 'wait', retry_at: current.refresh_retry_at };
+      // A 401 can force refresh only for the exact credential version rejected.
+      // A concurrent newer token is reused instead of needlessly refreshing it.
+      if (tokens.expires_at > now + GOOGLE_STATE_LIMITS.refreshSkewMs && input.rejectedTokenRevision !== tokenRevision) return { kind: 'ready', accessToken: tokens.access_token, generation: current.generation, tokenRevision };
+      const next = { ...current, revision: current.revision + 1, refresh_lease: { hash: leaseHash, expires_at: now + GOOGLE_STATE_LIMITS.refreshMs } };
+      this.#save(meta, next);
+      return { kind: 'refresh', connectionId, generation: current.generation, tokenRevision, lease, credentials: tokens };
+    });
+  }
+  async finishRefresh(tenantId, input) {
+    object(input, ['connectionId', 'generation', 'tokenRevision', 'lease', 'credentials']);
+    const connectionId = id(input.connectionId), generation = revision(input.generation), tokenRevision = revision(input.tokenRevision), leaseHash = await digest(opaque(input.lease));
+    const normalized = credentials(input.credentials, this.#now());
+    const previous = this.#transaction(tenantId, () => { const row = this.#get(connectionId); this.#refreshLease(row, generation, tokenRevision, leaseHash); return row; });
+    const sealed = await sealCredential(this.#key, this.#binding(tenantId, previous, 'google_tokens'), normalized);
+    return this.#transaction(tenantId, meta => {
+      const current = this.#get(connectionId); this.#refreshLease(current, generation, tokenRevision, leaseHash);
+      if (normalized.expires_at <= this.#now() || normalized.refresh_expires_at !== undefined && normalized.refresh_expires_at <= this.#now()) fail('invalid_provider_credentials');
+      const { refresh_lease, refresh_error, refresh_retry_at, refresh_failures, ...rest } = current;
+      const next = { ...rest, revision: current.revision + 1, tokens: sealed, token_revision: tokenRevision + 1, refresh_expires_at: normalized.refresh_expires_at ?? null };
+      this.#save(meta, next);
+      return { kind: 'ready', accessToken: normalized.access_token, generation, tokenRevision: next.token_revision };
+    });
+  }
+  async failRefresh(tenantId, input) {
+    object(input, ['connectionId', 'generation', 'tokenRevision', 'lease', 'error', 'retryAfterSeconds']);
+    const connectionId = id(input.connectionId), generation = revision(input.generation), tokenRevision = revision(input.tokenRevision), leaseHash = await digest(opaque(input.lease));
+    if (!['google_reauthorization_required', 'google_refresh_unavailable', 'google_token_response_invalid', 'google_scopes_incomplete', 'google_client_rejected', 'google_exchange_redirect_rejected'].includes(input.error)) fail('invalid_refresh_error');
+    const retryAfter = input.retryAfterSeconds ?? 0;
+    if (!Number.isSafeInteger(retryAfter) || retryAfter < 0 || retryAfter > Math.floor((8640000000000000 - this.#now()) / 1000)) fail('invalid_retry_delay');
+    return this.#transaction(tenantId, meta => {
+      const current = this.#get(connectionId); this.#refreshLease(current, generation, tokenRevision, leaseHash);
+      if (['google_reauthorization_required', 'google_scopes_incomplete'].includes(input.error)) return this.#invalidate(meta, current);
+      const { refresh_lease, ...rest } = current;
+      const failures = Math.min((current.refresh_failures ?? 0) + 1, 16);
+      const backoff = Math.min(3600000, 30000 * 2 ** (failures - 1));
+      const jitter = crypto.getRandomValues(new Uint32Array(1))[0] % (Math.floor(backoff / 4) + 1);
+      const delay = Math.max(backoff + jitter, retryAfter * 1000, input.error === 'google_client_rejected' ? 3600000 : 0);
+      const next = { ...rest, revision: current.revision + 1, refresh_error: input.error, refresh_failures: failures, refresh_retry_at: this.#now() + delay };
+      this.#save(meta, next);
+      return this.#status(next);
+    });
+  }
+  invalidateAccess(tenantId, { connectionId, generation, tokenRevision }) {
+    id(connectionId); revision(generation); revision(tokenRevision);
+    return this.#transaction(tenantId, meta => {
+      const current = this.#get(connectionId); this.#requireActive(current, generation, tokenRevision);
+      return this.#invalidate(meta, current);
+    });
+  }
+  assertActiveGeneration(tenantId, connectionId, generation) {
+    id(connectionId); revision(generation);
+    return this.#transaction(tenantId, () => {
+      const row = this.#get(connectionId);
+      if (!row || row.status !== 'authorized_not_synced' || !row.tokens || row.generation !== generation || row.refresh_expires_at && row.refresh_expires_at <= this.#now()) fail('google_access_changed', 409);
     });
   }
   disconnect(tenantId, input) {

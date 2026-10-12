@@ -51,12 +51,23 @@ try{
  assert.equal(consentPacket.connection_id,source);assert.equal(consentPacket.expected_revision,0);assert.equal(typeof consentPacket.attempt_id,'string');
  googleState={...googleState,status:'authorized_not_synced',authorized:true,revision:3};
  await page.goto(root);await ready();assert.match(await page.locator('#connections').innerText(),/Authorized; calendar selection and automatic collection are not available yet/);
+ let calendarPages=0;
+ await page.route('**/api/google/calendars?*',route=>{calendarPages++;return route.fulfill({json:{ok:true,live_sync:false,page:{items:[{id:'synthetic_calendar_'+calendarPages,summary:calendarPages===1?'<script>Synthetic literal calendar</script>':'Synthetic second calendar',timeZone:'UTC',accessRole:'owner'}],next_page_token:calendarPages===1?'synthetic_page_2':null,collection_complete:calendarPages===2}}});});
+ await page.getByRole('button',{name:'Show Google calendars',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar list is incomplete'));
+ assert.match(await page.locator('#connections').innerText(),/<script>Synthetic literal calendar<\/script>/);
+ assert.match(await page.locator('#connections').innerText(),/not selected or synced/);
+ await page.getByRole('button',{name:'Load next calendars',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar choices loaded'));
+ assert.equal(calendarPages,2);assert.equal(await page.getByRole('button',{name:'Calendars listed',exact:true}).isDisabled(),true);
+ await page.screenshot({path:join(evidence,'google-calendar-choices.png'),fullPage:true});
+ await page.unroute('**/api/google/calendars?*');
  await page.getByRole('button',{name:'Remove saved Google access',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved Google access removed locally'));
  assert.equal(disconnectPacket.expected_revision,3);assert.match(await page.locator('#connections').innerText(),/Saved access removed/);
  for(const pattern of ['**/api/onboarding','**/api/google/status?*','**/api/google/prepare','**/api/google/begin','**/api/google/disconnect','https://accounts.google.com/**'])await page.unroute(pattern);
  await page.reload();await ready();
- passed.push('synthetic consent UI: explicit permission, bounded Google destination, unsynced status and local-disconnect wording');
+ passed.push('synthetic consent UI: explicit permission, bounded Google destination, unsynced status, paged literal calendar names and local-disconnect wording');
  const calendarDate=offset=>new Date(Date.now()+7*86400000+offset).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');
  const ics=title=>`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-event\r\nDTSTART:${calendarDate(0)}\r\nDTEND:${calendarDate(3600000)}\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
  for(const title of ['Synthetic first event','Synthetic replacement event']){

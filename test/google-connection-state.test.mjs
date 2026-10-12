@@ -226,3 +226,81 @@ test('generic storage dispatch cannot read or mutate internal connector state', 
     assert.equal(result.ok, false); assert.equal(result.error, 'unknown_operation');
   }
 });
+
+async function authorized(f, value = tokens()) { const claim = await f.consume(await f.state.beginAuthorization(A, beginInput())); await f.finish(claim, value); }
+const refreshInput = claim => ({ connectionId: claim.connectionId, generation: claim.generation, tokenRevision: claim.tokenRevision, lease: claim.lease });
+
+test('refresh lease serializes concurrent acquisition, survives store recreation, and keeps secrets internal', async t => {
+  const f = await setup(t); await authorized(f);
+  f.setNow(initialNow + 3590000);
+  const claims = await Promise.all([f.state.acquireAccess(A, { connectionId: 'google_a' }), f.state.acquireAccess(A, { connectionId: 'google_a' })]);
+  assert.deepEqual(claims.map(x => x.kind).sort(), ['refresh', 'wait']);
+  const claim = claims.find(x => x.kind === 'refresh');
+  const restored = new GoogleConnectionState(new StudentStore(f.storage), { key: f.key, clock: () => initialNow + 3590000 });
+  assert.equal((await restored.acquireAccess(A, { connectionId: 'google_a' })).kind, 'wait');
+  assert.equal(restored.status(A, 'google_a').status, 'refreshing');
+  const next = { ...tokens(), access_token: 'example-renewed-access-token', expires_at: initialNow + 7190000 };
+  const ready = await restored.finishRefresh(A, { ...refreshInput(claim), credentials: next });
+  assert.equal(ready.tokenRevision, 2); assert.equal(ready.accessToken, next.access_token);
+  const saved = JSON.stringify(await f.read('account.export')); assert.equal(saved.includes(next.access_token), false); assert.equal(saved.includes(claim.lease), false);
+  assert.equal((await restored.acquireAccess(A, { connectionId: 'google_a', rejectedTokenRevision: 1 })).kind, 'ready');
+});
+
+test('expired refresh lease permits recovery but never accepts the previous delayed response', async t => {
+  const f = await setup(t); await authorized(f);
+  f.setNow(initialNow + 3590000);
+  const first = await f.state.acquireAccess(A, { connectionId: 'google_a' });
+  f.setNow(initialNow + 3590000 + GOOGLE_STATE_LIMITS.refreshMs);
+  const second = await f.state.acquireAccess(A, { connectionId: 'google_a' }); assert.equal(second.kind, 'refresh'); assert.notEqual(second.lease, first.lease);
+  const next = { ...tokens(), expires_at: initialNow + 7200000 };
+  await rejects(f.state.finishRefresh(A, { ...refreshInput(first), credentials: next }), 'google_refresh_stale');
+  await f.state.finishRefresh(A, { ...refreshInput(second), credentials: next });
+});
+
+test('transient refresh failure persists backoff and Retry-After without discarding the refresh token', async t => {
+  const f = await setup(t); await authorized(f); f.setNow(initialNow + 3590000);
+  const claim = await f.state.acquireAccess(A, { connectionId: 'google_a' });
+  const status = await f.state.failRefresh(A, { ...refreshInput(claim), error: 'google_refresh_unavailable', retryAfterSeconds: 180 });
+  assert.equal(status.authorized, true); assert.equal(status.refresh_error, 'google_refresh_unavailable'); assert.equal(status.retry_at, initialNow + 3770000);
+  assert.equal((await f.state.acquireAccess(A, { connectionId: 'google_a' })).kind, 'wait');
+  const restored = new GoogleConnectionState(new StudentStore(f.storage), { key: f.key, clock: () => initialNow + 3770000 });
+  const retry = await restored.acquireAccess(A, { connectionId: 'google_a' }); assert.equal(retry.kind, 'refresh'); assert.equal(retry.credentials.refresh_token, tokens().refresh_token);
+  await restored.finishRefresh(A, { ...refreshInput(retry), credentials: { ...tokens(), expires_at: initialNow + 7370000 } });
+  assert.equal(restored.status(A, 'google_a').refresh_error, undefined);
+});
+
+test('revoked grants and reduced scopes erase credentials and require a new authorization generation', async t => {
+  for (const error of ['google_reauthorization_required', 'google_scopes_incomplete']) {
+    const f = await setup(t); await authorized(f);
+    const claim = await f.state.acquireAccess(A, { connectionId: 'google_a', rejectedTokenRevision: 1 });
+    const result = await f.state.failRefresh(A, { ...refreshInput(claim), error });
+    assert.equal(result.status, 'reauthorization_required'); assert.equal(result.authorized, false);
+    assert.equal(f.store.row('SELECT body FROM google_connections').body.includes('ciphertext'), false);
+    await rejects(f.state.acquireAccess(A, { connectionId: 'google_a' }), 'google_reauthorization_required');
+    const next = await f.state.beginAuthorization(A, beginInput({ expectedRevision: result.revision, attemptId: 'synthetic_attempt_2' }));
+    assert.equal(next.generation, 3);
+  }
+});
+
+test('disconnect and deletion fence refresh completion and failure cleanup', async t => {
+  for (const deletion of [false, true]) {
+    const f = await setup(t); await authorized(f);
+    const claim = await f.state.acquireAccess(A, { connectionId: 'google_a', rejectedTokenRevision: 1 });
+    if (deletion) await f.write('account.delete', { confirm: 'DELETE_MY_WORKSPACE' }, (await f.read('account.export')).account_revision);
+    else f.state.disconnect(A, { connectionId: 'google_a', expectedRevision: f.state.status(A, 'google_a').revision });
+    await rejects(f.state.finishRefresh(A, { ...refreshInput(claim), credentials: tokens() }), deletion ? 'account_deleted' : 'google_access_changed');
+    await rejects(f.state.failRefresh(A, { ...refreshInput(claim), error: 'google_refresh_unavailable' }), deletion ? 'account_deleted' : 'google_access_changed');
+  }
+});
+
+test('known refresh expiry blocks access and an expired credential cannot commit after encryption', async t => {
+  const f = await setup(t); await authorized(f, { ...tokens(), refresh_expires_at: initialNow + 5000 });
+  f.setNow(initialNow + 5000);
+  assert.equal(f.state.status(A, 'google_a').status, 'reauthorization_required');
+  assert.equal((await f.state.acquireAccess(A, { connectionId: 'google_a' })).kind, 'reauthorize');
+  assert.equal(f.store.row('SELECT body FROM google_connections').body.includes('ciphertext'), false);
+  const g = await setup(t); await authorized(g);
+  const claim = await g.state.acquireAccess(A, { connectionId: 'google_a', rejectedTokenRevision: 1 });
+  const barrier = pauseEncryption(t), pending = g.state.finishRefresh(A, { ...refreshInput(claim), credentials: { ...tokens(), refresh_expires_at: initialNow + 1000 } }); await barrier.reached;
+  g.setNow(initialNow + 2000); barrier.release(); await rejects(pending, 'invalid_provider_credentials');
+});

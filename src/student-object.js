@@ -4,6 +4,8 @@ import { StudentStore } from './store.js';
 import { GoogleConnectionState } from './google-connection-state.js';
 import { googleConfiguration, createGoogleOAuthClient, GoogleOAuthError } from './google-oauth.js';
 import { ContractError, object, id } from './validation.js';
+import { createGoogleCalendarClient, CalendarProviderError } from './google-calendar.js';
+import { withGoogleAccess } from './google-access.js';
 
 export class StudentState extends DurableObject {
   constructor(ctx, env) {
@@ -30,6 +32,15 @@ export class StudentState extends DurableObject {
         return { ok: true, intent: await state.beginAuthorization(tenantId, { ...data, redirectUri: config.redirectUri }) };
       }
       if (op === 'disconnect') return { ok: true, connection: state.disconnect(tenantId, data) };
+      if (op === 'calendars') {
+        object(data, ['connectionId', 'pageToken']);
+        const connectionId = id(data.connectionId);
+        if (data.pageToken !== undefined && (typeof data.pageToken !== 'string' || !data.pageToken.length || data.pageToken.length > 8192 || /[\u0000-\u0020\u007f]/.test(data.pageToken))) return { ok: false, error: 'calendar_provider_invalid_input', status: 400 };
+        const accessed = await withGoogleAccess({ state, tenantId, connectionId, config, oauth: createGoogleOAuthClient(),
+          task: accessToken => createGoogleCalendarClient().calendarsPage({ accessToken, ...(data.pageToken === undefined ? {} : { pageToken: data.pageToken }) }) });
+        state.assertActiveGeneration(tenantId, connectionId, accessed.generation);
+        return { ok: true, page: accessed.value, connection: state.status(tenantId, connectionId), collection_scope: 'calendar_choices_only', live_sync: false };
+      }
       if (op !== 'callback') return { ok: false, error: 'unknown_operation', status: 404 };
       object(data, ['connectionId', 'state', 'browserBinding', 'code', 'denied']);
       if (typeof data.denied !== 'boolean' || (!data.denied && (typeof data.code !== 'string' || data.code.length > 4096 || !/^[\x21-\x7e]+$/.test(data.code)))) return { ok: false, error: 'invalid_callback', status: 400 };
@@ -48,6 +59,7 @@ export class StudentState extends DurableObject {
         throw error;
       }
     } catch (error) {
+      if (error instanceof CalendarProviderError) return { ok: false, error: error.code, status: 502 };
       if (error instanceof ContractError || ['google_oauth_disabled', 'google_oauth_not_configured'].includes(error.code)) return { ok: false, error: error.code, status: error.status };
       return { ok: false, error: 'google_connection_unavailable', status: 503 };
     }

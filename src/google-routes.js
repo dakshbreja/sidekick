@@ -34,6 +34,10 @@ export async function handleGoogleRoute({ request, url, env, identity, student }
     const query = queryData(url, ['connection_id']);
     return respond(await call('status', { connectionId: id(query.connection_id) }));
   }
+  if (url.pathname === '/api/google/calendars' && request.method === 'GET') {
+    const query = queryData(url, ['connection_id', 'page_token']);
+    return respond(await call('calendars', { connectionId: id(query.connection_id), ...(query.page_token === undefined ? {} : { pageToken: query.page_token }) }));
+  }
   if (request.method !== 'POST') throw new HttpError('method_not_allowed', 405);
   // New cookie-bearing operations require both same-origin evidence and the
   // workspace observed by the initiating UI, even if a request has no Origin.
