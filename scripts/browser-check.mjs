@@ -38,7 +38,7 @@ try{
  let googleState={connection_id:source,revision:0,status:'needs_authorization',authorized:false,generation:1,live_sync:false,last_successful_sync:null};
  let consentPacket,disconnectPacket,googleNavigations=0;
  let googleSelection={ok:true,record:null,revision:0,active:false},selectionWrites=0;const selectionReceipts=new Map();
- await page.route('**/api/onboarding',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch();const body=await response.json();body.capabilities.google_calendar_oauth=true;body.capabilities.google_calendar_selection=true;await route.fulfill({response,json:body});});
+ await page.route('**/api/onboarding',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch();const body=await response.json();body.capabilities.google_calendar_oauth=true;body.capabilities.google_calendar_selection=true;body.capabilities.google_calendar_collection=Boolean(googleState.collection?.automatic_enabled);await route.fulfill({response,json:body});});
  await page.route('**/api/google/status?*',route=>route.fulfill({json:{ok:true,connection:googleState}}));
  await page.route('**/api/google/selection?*',route=>route.fulfill({json:{...googleSelection,active:Boolean(googleSelection.record && googleState.authorized)}}));
  let interruptedSelection;
@@ -90,7 +90,7 @@ try{
  googleState={...googleState,status:'authorized',collection:{automatic_enabled:true,scheduler:{status:'scheduled',next_run_at:Date.now()+60000,error:null},calendars:[{name:'<script>Synthetic literal calendar</script>',status:'idle',snapshot_complete:true,freshness:'recent',last_successful_sync:new Date().toISOString()}]}};
  await page.reload();await ready();const collectionText=await page.locator('.google-collection-status').innerText();assert.match(collectionText,/Latest download complete/);assert.match(collectionText,/Recently checked/);assert.match(collectionText,/<script>Synthetic literal calendar<\/script>/);assert.doesNotMatch(await page.locator('#connections').innerText(),/no events synced yet/i);
  googleState.collection.calendars[0].status='backoff';googleState.collection.calendars[0].freshness='stale';googleState.collection.scheduler.error='collection_global_limit';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Saved snapshot may be out of date/);assert.match(await page.locator('.google-collection-status').innerText(),/resume automatically/);
- googleState.collection.scheduler.status='paused';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Checks paused after repeated failures/);
+ googleState.collection.scheduler={status:'paused',next_run_at:null,error:'collection_unavailable'};googleState.collection.calendars[0].status='paused';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Checks paused after repeated failures/);
  await page.screenshot({path:join(evidence,'google-collection-status.png'),fullPage:true});passed.push('synthetic collection UI: literal names, complete-check date, stale snapshot, request-limit wait and paused scheduler');
  delete googleState.collection;googleState.status='authorized_not_synced';await page.reload();await ready();
  await page.getByRole('button',{name:'Clear selection',exact:true}).click();
