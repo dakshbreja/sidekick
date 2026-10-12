@@ -69,7 +69,7 @@ The commands print test counts for the current checkout. A passing suite establi
 
 ## Not implemented or not established
 
-- Cloud deployment, real-student sign-in setup, university admission rules or public availability.
+- Real-student admission, university verification or public availability. An approved owner-only hosted test is active; its actual evidence is recorded below.
 - Google Calendar/eLC OAuth, provider credential storage, refresh/revocation and automatic source population.
 - Browser collectors, background queues, Drive delivery, lecture transcription or source-verified assignment reconciliation.
 - Complete deadline/announcement reconciliation, automatic daily briefings, reminders or proactive teaching.
@@ -130,3 +130,17 @@ The local branch implements the first stage of [PRODUCT-PLAN.md](PRODUCT-PLAN.md
 The Codex in-app browser independently verified synthetic profile save/receipt confirmation, course creation, `.vtt` file preview, transcript save/readback with script-looking content rendered literally, an empty Student B workspace, and restoration of Student A after switching back and reloading. This is local UI evidence, not hosted identity or cross-client AI evidence.
 
 The optional-tools screen distinguishes available text imports from planned ChatGPT/Claude connections and website AI. Editable preferences do not establish understanding or access to other chats. Current preferences can be cleared; historical save receipts retain earlier values until account deletion under the existing recovery contract. The signed-in Cloudflare account was confirmed locally through the official CLI without reading or displaying its credential. Provider deployment, Access setup, source authorization and model spending remain separate steps.
+
+### Approved private hosting and deployment repairs
+
+Source commit `2fc47bd` was uploaded to the new `school-bridge-community-dev` Worker on October 12. Wrangler reported **No targets deployed**; the dashboard independently showed **No URLs enabled**, zero domains/routes and a separate `STUDENTS` Durable Object binding. Version: `84a087ca-77de-4361-ad72-587a6d0d6140`. Existing services were not modified.
+
+After explicit owner approval, a dedicated Worker Access application was applied to All traffic and narrowed to a single exact owner-email rule before routing was enabled. The separate tenant secret and pinned identity settings are installed. The default repository configuration remains unrouted; a protected external owner-test configuration enables the approved address. Browser admission reached the app through the existing owner account. Signed-out HTTP requests returned denial without workspace data, and browser navigation independently showed the Access login.
+
+The first hosted page exposed `__name is not defined` in a serialized browser helper. Commit `4311cdb` fixes Wrangler build settings and adds an actual deployment-artifact check covering helper execution, text validation, save/receipt, lost-response restoration and separate student state. `npm run test:browser` now builds and tests that deployment artifact. Both GitHub runs passed: [push](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317026288), [pull request](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317030894).
+
+A subsequent hosted backend check rejected a valid Access assertion because its optional JOSE header type was absent. Commit `05eb877` permits absence while rejecting an explicit wrong type and retaining all signature, pinned issuer/audience, lifetime, human identity and payload `type=app` requirements. The gate passed **174 tests** plus the deployment-artifact check. Opt-in diagnostics log only allowlisted validation categories; no credentials or identity values. Live owner authentication then passed. Synthetic profile, course and note saves each returned the UI’s receipt-confirmed success; a full reload restored all three, and Read material returned the exact saved source with script-looking text rendered literally. No real school data was entered. Opt-in authentication diagnostics were disabled after verification.
+
+This establishes the owner-only hosted path, not a real-student pilot. Two independently controlled real accounts, denied-account sign-in, provider expiry/revocation, hosted failure/recovery/deletion and restore/load drills remain outstanding. School OAuth, automatic collection, website teaching and live external AI-client connections remain unimplemented.
+
+The final verified code head is `05eb877`; [push CI](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317403892) and [PR CI](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317408381) both passed, including rendered deployment-bundle recovery. Final owner-test deployment version: `26687ec6-8fe3-44ef-97ef-5dc3614fc650`, with category diagnostics disabled.
