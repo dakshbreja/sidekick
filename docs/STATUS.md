@@ -69,7 +69,7 @@ The commands print test counts for the current checkout. A passing suite establi
 
 ## Not implemented or not established
 
-- Real-student admission, university verification or public availability. An approved owner-only hosted test is active; its actual evidence is recorded below.
+- Real-student admission, university verification or public availability. An approved two-account operator-controlled hosted test is active; its actual evidence is recorded below.
 - Google Calendar/eLC OAuth, provider credential storage, refresh/revocation and automatic source population.
 - Browser collectors, background queues, Drive delivery, lecture transcription or source-verified assignment reconciliation.
 - Complete deadline/announcement reconciliation, automatic daily briefings, reminders or proactive teaching.
@@ -144,3 +144,13 @@ A subsequent hosted backend check rejected a valid Access assertion because its 
 This establishes the owner-only hosted path, not a real-student pilot. Two independently controlled real accounts, denied-account sign-in, provider expiry/revocation, hosted failure/recovery/deletion and restore/load drills remain outstanding. School OAuth, automatic collection, website teaching and live external AI-client connections remain unimplemented.
 
 The final verified code head is `05eb877`; [push CI](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317403892) and [PR CI](https://github.com/dakshbreja/school-bridge-community/actions/runs/38317408381) both passed, including rendered deployment-bundle recovery. Final owner-test deployment version: `26687ec6-8fe3-44ef-97ef-5dc3614fc650`, with category diagnostics disabled.
+
+### Two real accounts and calendar connector foundations, October 12
+
+After explicit approval, the dedicated Access policy was expanded from one exact owner address to two addresses controlled by the same operator. Email-code authentication was added and selected for this app alongside the existing Cloudflare login. The application inventory showed one Access application; the policy readback showed exactly the two approved addresses and one application. No domain-wide student admission was enabled. Real addresses, screenshots and exports remain outside Git.
+
+The operator completed the second account's email-code sign-in. Its workspace started empty. A distinct synthetic profile, course and note saved with receipt-confirmed UI success, survived full reload, and returned exact note text. The first account remained open in a separate browser session with its original records. Each account's material list excluded the other's marker. Downloaded exports independently showed different workspace identities, their respective profile/course/material records and no opposite-account marker. The second account is a test identity owned by the operator, not a second student pilot.
+
+This verifies normal hosted admission, save/readback and export separation for two real sign-ins. It does not verify hosted forged-ID attacks, cross-account receipt queries, session expiry/revocation, account switching during pending writes, deletion or disaster recovery. Existing synthetic tests cover some of those contracts; live evidence remains a separate gate. The hosted Worker code/version was not changed in this step.
+
+The new server-only Google read adapter and credential encryption components are documented in [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md). Twelve additional synthetic tests cover bounded and paginated collection, cancellations/recurrence identity, malformed input, token expiry, full-sync reset signals, throttling, timeout/body limits, redirect rejection, and encryption context separation/tamper detection. The components also execute in real local workerd with intercepted provider responses. The full local gate passes **186 tests**, privacy scanning (including the external private-reference denylist), plugin audit, dry-run build and actual deployment-artifact checks. The application still declares Google OAuth/background collection unavailable; these components have no live routes, provider credentials or scheduled jobs yet.
