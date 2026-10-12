@@ -13,7 +13,7 @@ const location=relative(await realpath(repository),await realpath(evidence));
 if(!isAbsolute(location) && location!=='..' && !location.startsWith('..'+sep))throw new Error('Browser evidence must be outside the repository.');
 const profile=await mkdtemp(join(tmpdir(),'school-bridge-synthetic-browser-'));
 const port=process.env.DEMO_PORT || '8767';const root=`http://127.0.0.1:${port}`;
-const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port},stdio:['ignore','pipe','pipe'],detached:true});
+const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1'},stdio:['ignore','pipe','pipe'],detached:true});
 let demoLog='';demo.stdout.on('data',b=>demoLog+=b);demo.stderr.on('data',b=>demoLog+=b);
 let context,page;const errors=[];const passed=[];
 const ready=()=>page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));

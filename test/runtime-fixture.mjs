@@ -2,16 +2,17 @@
 import { build } from 'esbuild';
 import { Miniflare, Log, LogLevel, convertV4MiniflareOptions } from 'miniflare';
 import { fileURLToPath } from 'node:url';
+import { readFile } from 'node:fs/promises';
 import { createAuthFixture } from './auth-fixtures.mjs';
 
-export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false } = {}) {
+export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false, deploymentBundle } = {}) {
   const auth = authFixture ?? await createAuthFixture();
   const root = fileURLToPath(new URL('../', import.meta.url));
-  const bundled = await build({ absWorkingDir: root, entryPoints: ['src/index.js'], bundle: true,
-    write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['cloudflare:*'], logLevel: 'silent' });
+  const script = deploymentBundle ? await readFile(deploymentBundle, 'utf8') : (await build({ absWorkingDir: root, entryPoints: ['src/index.js'], bundle: true,
+    write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['cloudflare:*'], logLevel: 'silent' })).outputFiles[0].text;
   const outboundRequests = [];
   // v5 explicitly exports this converter for the documented Worker option API.
-  const mf = new Miniflare(convertV4MiniflareOptions({ name: workerName, modules: true, script: bundled.outputFiles[0].text,
+  const mf = new Miniflare(convertV4MiniflareOptions({ name: workerName, modules: true, script,
     scriptPath: `${root}test/runtime-worker.mjs`, compatibilityDate: '2026-10-12',
     compatibilityFlags: ['nodejs_compat'], host: '127.0.0.1', port: 0, cf: false,
     unsafeDevRegistryPath: undefined, unsafeRegisterWorker: false,

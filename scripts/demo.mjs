@@ -2,7 +2,7 @@
 // Loopback-only disposable demo. This is never imported by the deployed Worker.
 import { createServer } from 'node:http';
 import { createRuntime } from '../test/runtime-fixture.mjs';
-const runtime = await createRuntime();
+const runtime = await createRuntime({ deploymentBundle: process.env.DEMO_DEPLOYMENT_BUNDLE === '1' ? new URL('../dist/index.js', import.meta.url) : undefined });
 const demoPort = Number(process.env.DEMO_PORT || 8766);
 if (!Number.isSafeInteger(demoPort) || demoPort < 1024 || demoPort > 65535) throw new Error('Invalid DEMO_PORT');
 const demoOrigin = `http://127.0.0.1:${demoPort}`;

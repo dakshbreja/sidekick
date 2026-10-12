@@ -109,4 +109,6 @@ export function createWriteQueue({storage, owner} = {}) {
     }
   };
 }
+// Serialized functions must stay closure-free. Wrangler keep_names/minify are
+// disabled; test:bundle executes the emitted module to catch compiler helpers.
 export const WRITE_MODULE = 'export const createWriteQueue = ' + createWriteQueue.toString() + ';';
