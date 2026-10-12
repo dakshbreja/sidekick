@@ -4,7 +4,7 @@
 
 Continue development of this clean community repository in a private Codex cloud environment. The personal School Bridge remains separate. This file is the handoff; it does not claim a cloud task or deployment exists.
 
-GitHub publication is pending the owner's sign-in. Once the private repository exists, connect only this repository to a new private cloud environment. Do not attach personal source repositories, existing account sessions or production secrets.
+The private [GitHub repository](https://github.com/dakshbreja/school-bridge-community) is published, and its initial GitHub Actions Linux validation passed. Connect only this repository to a new private cloud environment. The Codex cloud repository picker currently requires the owner's separate GitHub App repository authorization; a cloud task has not been launched. Do not attach personal source repositories, existing account sessions or production secrets.
 
 ## Environment setup
 
