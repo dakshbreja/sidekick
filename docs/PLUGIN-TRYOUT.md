@@ -1,6 +1,6 @@
 # Try the School Bridge plugin privately
 
-This checklist is for the instruction-only draft. It has not yet been installed or tested inside your ChatGPT account. The website tests and package checks have passed; that is different from testing the plugin itself.
+This checklist is for the instruction-only draft. Owner-supplied screenshots now show a private installed plugin and expected responses to the recovery and fictional-onboarding prompts. The broader checklist remains incomplete. Website and package tests are separate evidence from those observed plugin responses.
 
 ## Get the private test package
 

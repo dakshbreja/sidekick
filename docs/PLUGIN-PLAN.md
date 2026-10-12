@@ -22,7 +22,7 @@ Our expected benefit is less repeated explanation and more consistent sequencing
 | Speed | End-to-end time, including authentication and source retrieval. |
 | Cost | Actual model/tool usage and applicable credits or API spend. |
 
-The instruction package has not been installed, invoked in a host or benchmarked. Local package checks establish structure and scope, not model adherence or runtime acceptance. No efficiency savings are claimed yet.
+The owner has supplied screenshots of a private installed plugin with both skills enabled and two expected instruction responses: uncertain-save recovery and fictional course onboarding. This is limited manual host evidence; it does not establish byte-for-byte equivalence with the repository package, all skill-trigger behavior or measured efficiency. Local package checks establish structure and scope. No efficiency savings are claimed yet.
 
 ## What is incorporated now
 

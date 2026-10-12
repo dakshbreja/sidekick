@@ -26,7 +26,7 @@ No account password, identity token or secret should be pasted into chat, an iss
 
 ## First: decisions we need
 
-- [ ] Confirm whether you have a Cloudflare account for the community project.
+- [x] The owner reports being signed in to the Cloudflare dashboard. This execution environment still has no Cloudflare account connection or provider secret.
 - [ ] Choose an HTTPS hostname dedicated to this project. Its availability and routing have not been established.
 - [ ] Name the project operator and who can administer hosting, identity and stored data.
 - [ ] Choose a narrow list of operator-controlled test accounts. Use made-up course information during testing.
@@ -79,3 +79,5 @@ The current verification accepts signed human-user application assertions, rejec
 The cloud environment currently has no provider secrets or outbound provider identity. A real Access test needs the new application, approved hostname/routing, dedicated settings, operator-controlled test sign-ins and permitted access to that team's public signing-key endpoint. Any missing setup must be resolved through the intended configuration workflow; personal credentials are not a substitute.
 
 Run `npm run check` for synthetic identity, storage and privacy contracts, and `npm run test:browser` for rendered synthetic behavior. Neither command configures or proves real Access admission, enrollment or provider revocation. See [STATUS.md](STATUS.md) for completed evidence.
+
+`npm run check:signin` is a format-only preflight for an execution environment that intentionally supplies the three settings. It reports missing setting names, never their values, and makes no network requests. An empty foundation is expected to fail this check. Hosting-only Worker secrets are not automatically readable by this CLI; do not copy a secret into chat or CI to make it pass. Even a successful result leaves identity, hostname, Access policy and revocation verification explicitly false until actual hosted checks are performed.
