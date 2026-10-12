@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "policy": "explicit-file-allowlist",
+  "source_project": "personal-school-bridge",
+  "source_records_imported": false,
+  "files": [
+    {
+      "source_relative_path": "bridge/src/ics.js",
+      "destination_relative_path": "src/core/ics.js",
+      "source_sha256": "b3c57d7f9be84244bbba21e66365f9e310525c08405a331c97eb0fe08265c90d",
+      "destination_sha256_at_port": "b3c57d7f9be84244bbba21e66365f9e310525c08405a331c97eb0fe08265c90d",
+      "basis": "Self-contained parser; no credentials, records, account identifiers, network calls or personal course registry.",
+      "adaptation": "Byte-for-byte initial port. Caller must supply the student's timezone and bounded import window. Unsupported recurrence remains visible as coverage warnings."
+    }
+  ]
+}

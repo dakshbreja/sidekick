@@ -1,0 +1,6 @@
+# Set only new community-project values. Never reuse personal Bridge credentials.
+# Authentication fails closed until all three values are configured.
+ACCESS_ISSUER=""
+ACCESS_AUDIENCE=""
+# A separately generated random 32-byte value, encoded as unpadded base64url.
+TENANT_ID_KEY=""

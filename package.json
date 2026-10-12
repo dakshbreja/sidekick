@@ -1,0 +1,31 @@
+{
+  "name": "school-bridge-community",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "UNLICENSED",
+  "description": "Private, empty-by-default student workspace foundation.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wrangler dev --local --ip 127.0.0.1",
+    "test": "node --test test/*.test.mjs",
+    "test:runtime": "node --test test/runtime.test.mjs",
+    "check:privacy": "node scripts/privacy-scan.mjs",
+    "types": "wrangler types",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "check": "npm run check:privacy && npm test && npm run build",
+    "demo": "node scripts/demo.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.12"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261012.1",
+    "@types/node": "24.19.2",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261006.1-alpha",
+    "wrangler": "4.149.0"
+  }
+}
