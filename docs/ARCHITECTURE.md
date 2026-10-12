@@ -33,9 +33,10 @@ Static application assets are separate from protected `/api/*` data. The health 
 | `src/calendar-import.js`, `src/core/ics.js` | Parse a supplied calendar file into a bounded window with explicit warnings. No remote feed fetch. |
 | `src/ui.js`, `src/write-intent.js` | Onboarding, imports and opt-in calendar controls; persistent save intents and receipt resolution. |
 | `src/google-calendar.js`, `src/google-oauth.js`, `src/google-routes.js` | Bounded provider transport and authenticated, opt-in consent/discovery/selection routes. |
+| `src/google-collection-state.js`, `src/google-collector.js` | Internal leased page collection, staged/published source snapshots, recovery bounds and lifecycle cleanup; no scheduler yet. |
 | `src/google-connection-state.js`, `src/google-access.js`, `src/credential-envelope.js` | Private authorization state, credential encryption, durable refresh leases/backoff and generation checks. |
 
-Encrypted Google credentials and bounded discovery metadata use private tables in the student database, outside normal records and exports. Calendar selections are normal exportable records. These connector components remain disabled on the private deployment; scheduled event collection and AI-provider clients are unfinished. See [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md).
+Encrypted Google credentials and bounded discovery metadata use private tables in the student database, outside normal records and exports. Calendar selections are normal exportable records. Completed authorized event snapshots are exported separately; their private cursors and staging rows are excluded. These connector components remain disabled on the private deployment; scheduled event collection and AI-provider clients are unfinished. See [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md).
 
 ## Resource and save contract
 
@@ -76,6 +77,8 @@ All limits apply independently to each student. These are safety bounds for the 
 | Material text | 100,000 UTF-16 code units, also subject to the byte bound |
 | Records per resource kind | 100; calendars have a separate limit of 20 |
 | Current records per student | 10,000,000 bytes |
+| Google source events | 10,000 per calendar; 20,000 / 8 MB per workspace in each of published and staging tables |
+| Google collection pages | 500 per run; one bounded provider page per step |
 | Retained save receipts | 5,000 or 20,000,000 bytes, whichever is reached first |
 | Learning observations per session | 50 distinct topics |
 | Learning resume text | 8,000 UTF-16 code units |

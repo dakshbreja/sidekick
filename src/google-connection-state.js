@@ -1,6 +1,7 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 // Internal connector state only. Never expose these methods through generic
 // dispatch/RPC: consumeAuthorization returns a verifier to trusted server code.
+import { clearGoogleCollection } from './google-collection-state.js';
 import { base64url } from 'jose';
 import { timingSafeEqual } from 'node:crypto';
 import { sealCredential, openCredential } from './credential-envelope.js';
@@ -192,6 +193,7 @@ export class GoogleConnectionState {
     const next = { id: current.id, revision: current.revision + 1, generation: current.generation + 1, status: 'reauthorization_required' };
     this.#save(meta, next);
     this.#store.sql.exec('DELETE FROM google_choices WHERE connection_id = ?', current.id);
+    clearGoogleCollection(this.#store, current.id);
     return this.#status(next);
   }
   // Internal only. A ready access token or refresh claim must never cross RPC.
@@ -284,6 +286,7 @@ export class GoogleConnectionState {
       const next = { id: connectionId, revision: expectedRevision + 1, generation: (current?.generation ?? 0) + 1, status: 'disconnected' };
       this.#save(meta, next);
       this.#store.sql.exec('DELETE FROM google_choices WHERE connection_id = ?', connectionId);
+      clearGoogleCollection(this.#store, connectionId);
       return { ...this.#status(next), provider_revocation: 'not_attempted' };
     });
   }

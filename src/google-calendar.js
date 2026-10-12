@@ -96,6 +96,20 @@ function calendar(value) {
   return result;
 }
 
+// Revalidate normalized pages at the durable commit boundary. No cursors or raw
+// provider objects from callers may bypass transport/storage limits.
+export function validateGoogleEventPage(value) {
+  if (!plain(value) || Object.keys(value).some(key=>!['items','next_page_token','next_sync_token','collection_complete','time_zone','recurrence_expanded'].includes(key)) || !Array.isArray(value.items) || value.items.length>GOOGLE_LIMITS.pageItems || value.recurrence_expanded!==false) throw invalid();
+  const next_page_token=value.next_page_token===null?null:input(value.next_page_token,8192);
+  const next_sync_token=value.next_sync_token===null?null:input(value.next_sync_token,8192);
+  if(Boolean(next_page_token)===Boolean(next_sync_token) || value.collection_complete!==!next_page_token)throw invalid();
+  const time_zone=value.time_zone===null?null:text(value.time_zone,100);
+  if(time_zone!==null){try{new Intl.DateTimeFormat('en-US',{timeZone:time_zone});}catch{throw invalid();}}
+  const items=value.items.map(event);
+  if(new Set(items.map(item=>item.id)).size!==items.length || new TextEncoder().encode(JSON.stringify(value)).byteLength>GOOGLE_LIMITS.responseBytes)throw invalid();
+  return {items,next_page_token,next_sync_token,collection_complete:value.collection_complete,time_zone,recurrence_expanded:false};
+}
+
 /** One bounded page per call. Durable callers own pacing, retries and commits. */
 export function createGoogleCalendarClient({ fetcher = fetch, timeoutMs = GOOGLE_LIMITS.timeoutMs } = {}) {
   if (typeof fetcher !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > GOOGLE_LIMITS.timeoutMs) {

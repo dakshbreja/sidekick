@@ -1,4 +1,5 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
+import { initializeGoogleCollection, clearGoogleCollection, reconcileGoogleSelection, exportGoogleSnapshots } from './google-collection-state.js';
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
 const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar', 'google_selection'];
@@ -42,6 +43,8 @@ export class StudentStore {
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS google_choices (connection_id TEXT NOT NULL, generation INTEGER NOT NULL, calendar_id TEXT NOT NULL, observed_at INTEGER NOT NULL, body TEXT NOT NULL, byte_count INTEGER NOT NULL, PRIMARY KEY(connection_id, calendar_id))');
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)');
+      initializeGoogleCollection(this);
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -160,6 +163,7 @@ export class StudentStore {
         if (row.kind === 'profile') exported.profile = record;
         else exported[row.kind].push(record);
       }
+      exported.google_calendar_snapshots = exportGoogleSnapshots(this);
       return { ...common, exported_at: this.clock(), deleted: false, data: exported };
     }
     if (op === 'receipt.get') {
@@ -202,7 +206,7 @@ export class StudentStore {
     });
     return { ...common, records, complete: filtered.length <= limit, next_cursor: filtered.length > limit ? records.at(-1).id : null };
   }
-  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [] }; }
+  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [] }; }
   write(meta, message, input, requestHash) {
     const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
     if (saved) {
@@ -261,6 +265,7 @@ export class StudentStore {
     if (input.kind === 'learning') record.assessment = assessment(record.observations);
     if (input.kind === 'calendar') Object.assign(record, { imported_at: now, live_sync: false, source_freshness: 'unknown', coverage: { ...record.coverage, meaning: 'parsed_import_window_only' } });
     if (input.kind === 'progress') record.provenance = 'student_report_only';
+    if (input.kind === 'google_selection') reconcileGoogleSelection(this, record);
     const body = JSON.stringify(record);
     const count = bytes(body);
     if (count > STORE_LIMITS.recordBytes) fail('record_too_large', 413);
@@ -293,6 +298,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM operations');
     this.sql.exec('DELETE FROM google_connections');
     this.sql.exec('DELETE FROM google_choices');
+    clearGoogleCollection(this);
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;

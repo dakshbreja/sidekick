@@ -369,7 +369,7 @@ test('deletion requires fresh account revision and removes all latest and histor
   assert.equal((await read('materials.get', { id: 'material_a' })).status, 410);
   assert.equal((await read('receipt.get', { operation_id: 'material_save_1' })).status, 410);
   assert.equal((await write('profile.put', profile, 0, 'new_profile_1')).status, 410);
-  assert.deepEqual((await read('account.export')).data, { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [] });
+  assert.deepEqual((await read('account.export')).data, { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [] });
   const fresh = new StudentStore(storage);
   const retry = await fresh.dispatch({ tenantId: ALICE, op: 'account.delete', data: { confirm: 'DELETE_MY_WORKSPACE' }, expectedRevision: 4, operationId: 'delete_save_1' });
   assert.deepEqual(retry, { ...deletion, replayed: true });
