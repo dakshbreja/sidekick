@@ -70,11 +70,11 @@ The commands print test counts for the current checkout. A passing suite establi
 ## Not implemented or not established
 
 - Real-student admission, university verification or public availability. An approved two-account operator-controlled hosted test is active; its actual evidence is recorded below.
-- Google Calendar/eLC OAuth, provider credential storage, refresh/revocation and automatic source population.
-- Browser collectors, background queues, Drive delivery, lecture transcription or source-verified assignment reconciliation.
+- Live Google Calendar authorization/collection and eLC integration. Google consent, credential storage, refresh and scheduled collection are implemented behind disabled gates; provider revocation and live verification remain.
+- Browser collectors, general background queues, Drive delivery, lecture transcription or source-verified assignment reconciliation.
 - Complete deadline/announcement reconciliation, automatic daily briefings, reminders or proactive teaching.
 - AI-provider integration, source-backed tutoring, cross-client GPT/plugin rollout or access to other chats.
-- Production rate limits, spending controls, concurrency targets, backup restoration, key migration or sustained fault/uptime testing.
+- Whole-service abuse/spending controls, measured concurrency targets, backup restoration, key migration or sustained fault/uptime testing. Scheduled Google collection now has local and shared request budgets.
 - A finalized consent, support-access, retention, deletion-backup and incident-response policy suitable for real students.
 
 The student interface supports setup and manual data entry. Coursework and learning currently expose APIs, without a teaching or progress-management UI. Calendar entries are imports, not proof of current portal coverage. Saving a URL leaves its connector unavailable or needing authorization.
@@ -198,3 +198,13 @@ The internal event collector now stages full/incremental pages separately and pu
 Schema v4 integrates collection cleanup with selection changes, credential invalidation, disconnect and account deletion. Completed authorized snapshots are exportable without private cursors or unfinished pages. Opaque snapshot IDs prevent stale pagination across removal/recreation. Raw recurrence and cancellations are preserved but not expanded into an upcoming schedule.
 
 Seventeen new synthetic tests include three real workerd/SQLite integrations with provider interception and full runtime restarts. They cover storage-fault rollback, competing staging reservations, stable incremental cursors, throttling/reset, privacy fences, cancellation identity, bounds and stale pagination. The local full gate passes **264 tests**, privacy/plugin checks, dry-run and deployment-artifact verification. Latest-head CI still needs separate verification. The engine is **internal and unscheduled**: alarms, authenticated collection status/retry routes, calendar rendering, recurrence projection and live Google authorization still need implementation/verification. No deployment or live collection was enabled. See [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md#staged-event-collection-engine).
+
+### Scheduled collection and source status, October 12
+
+The disabled-by-default Google collector now runs from per-workspace alarms. Selection/receipt/wakeup saves and deletion/alarm cancellation share a SQLite transaction; a recovery wakeup is committed before external work. Due calendars rotate within the workspace. Conservative scheduled-request limits apply per workspace and across the service through a separate anonymous budget object. Retries/reselection cannot reset usage or shorten shared cooldowns. Unknown failures back off and pause after eight attempts.
+
+Authenticated status and snapshot-page routes expose only the current owner's completed data. The website shows complete-check dates, stale snapshots, provider waits and paused checks, rendering names literally. The upcoming overview remains limited to imported files; raw Google recurrence still needs projection. New schema v5 and Wrangler migration v2 require review before any hosted upgrade.
+
+The local full gate passes **276 tests**, privacy/plugin checks, dry-run and actual deployment-artifact validation. Twelve new tests cover windows/clock rollback, reservation idempotency/rollback/expiry, scheduler fairness/leases/cooldowns, real workerd alarms across restart, SQL-plus-alarm transaction failure, disabled collection, shared-budget denial and disconnect/deletion during in-flight requests. The restart harness activates the persisted object through a read-only inspection before waiting for its existing alarm; it does not manually run the alarm or repair the schedule. Rendered browser coverage adds complete/stale/paused collection status; verify the current head's CI separately.
+
+No live source, OAuth registration, hosting upgrade or broader admission changed. The protected live deployment remains on its earlier private-test code. Recurring-event projection, provider revocation, dedicated OAuth setup/consent, hosted verification and the remaining product release gates are unfinished.

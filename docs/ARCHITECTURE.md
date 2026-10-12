@@ -116,3 +116,7 @@ A later authenticated plugin/MCP client must reuse the backend's verified identi
 | Teaching and product validation | Integrate an actual model and permitted source retrieval, then test evidence grounding, understanding checks, saves and fresh-client resume. Run a small observed student pilot before widening access. |
 
 The order is deliberate: finish independent sign-in and one supported source path, validate two real consenting accounts, then build out automation and teaching. Private hosting and normal two-account saves/reloads/exports have been verified. Live Google/eLC authorization, AI teaching, unattended collection and the remaining release gates are unfinished.
+
+## Automatic calendar scheduling (opt-in, not deployed)
+
+`StudentState` owns one alarm for its selected calendars. Selection/receipt/alarm and deletion/alarm cancellation use the same SQLite transaction; external requests run afterward. Private scheduler reservations preserve a recovery wakeup before provider work and retain conservative hourly/day usage across retry or reselection. A separate anonymous `CollectionBudget` object provides service-wide request reservations. This new binding requires Wrangler's v2 SQLite migration. Both the source configuration and live private deployment leave collection disabled. Detailed limits, failure semantics and remaining activation gates are in [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md#scheduled-collection-and-visible-status).

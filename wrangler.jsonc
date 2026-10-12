@@ -9,7 +9,7 @@
   "keep_names": false,
   "minify": false,
   "observability": {"enabled": true, "head_sampling_rate": 1, "redact_query_string": true, "logs": {"enabled": true, "invocation_logs": false}, "traces": {"enabled": false}},
-  "durable_objects": {"bindings": [{"name": "STUDENTS", "class_name": "StudentState"}]},
-  "migrations": [{"tag": "v1", "new_sqlite_classes": ["StudentState"]}],
+  "durable_objects": {"bindings": [{"name": "STUDENTS", "class_name": "StudentState"}, {"name": "COLLECTION_BUDGETS", "class_name": "CollectionBudget"}]},
+  "migrations": [{"tag": "v1", "new_sqlite_classes": ["StudentState"]}, {"tag": "v2", "new_sqlite_classes": ["CollectionBudget"]}],
   "vars": {"APP_ENV": "development", "ACCESS_ISSUER": "", "ACCESS_AUDIENCE": ""}
 }

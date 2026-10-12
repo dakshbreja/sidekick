@@ -6,6 +6,8 @@ import {WRITE_MODULE} from './write-intent.js';
 import {TEXT_IMPORT_MODULE} from './text-import.js';
 import {googleConfigured,GOOGLE_CALLBACK_PATH} from './google-oauth.js';
 import {handleGoogleRoute,googleCallbackRedirect} from './google-routes.js';
+import {collectionEnabled} from './google-scheduler.js';
+export {CollectionBudget} from './collection-budget-object.js';
 export {StudentState} from './student-object.js';
 
 const routes = Object.freeze({
@@ -50,7 +52,7 @@ export default {
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
         return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
-          connections:results[2].records,capabilities:{...capabilities,google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env)}});
+          connections:results[2].records,capabilities:{...capabilities,google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)}});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));

@@ -18,7 +18,7 @@ export async function createRuntime({ authFixture, persistPath, workerName = 'co
     unsafeDevRegistryPath: undefined, unsafeRegisterWorker: false,
     unsafeInspectDurableObjects: inspectStorage,
     log: new Log(LogLevel.ERROR), bindings: { ...auth.env, ...bindings },
-    durableObjects: { STUDENTS: { className: 'StudentState', useSQLite: true } },
+    durableObjects: { STUDENTS: { className: 'StudentState', useSQLite: true }, COLLECTION_BUDGETS: {className:'CollectionBudget',useSQLite:true} },
     ...(persistPath ? { resourcePersistencePath: persistPath } : {}),
     outboundService: async (request) => {
       outboundRequests.push({ method: request.method, url: request.url });

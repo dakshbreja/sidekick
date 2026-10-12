@@ -75,7 +75,7 @@ try{
  await page.getByRole('button',{name:'Show Google calendars',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar list is incomplete'));
  assert.match(await page.locator('#connections').innerText(),/<script>Synthetic literal calendar<\/script>/);
- assert.match(await page.locator('#connections').innerText(),/not synced/);
+ assert.match(await page.locator('#connections').innerText(),/Available calendar choice/);
  await page.getByRole('button',{name:'Load next calendars',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar choices loaded'));
  assert.equal(calendarPages,2);assert.equal(await page.getByRole('button',{name:'Calendars listed',exact:true}).isDisabled(),true);
@@ -87,6 +87,12 @@ try{
  await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/1 selected/);
  await reconcile();assert.equal(selectionWrites,1);assert.equal((await stored()).length,0);
  await page.screenshot({path:join(evidence,'google-calendar-selection.png'),fullPage:true});
+ googleState={...googleState,status:'authorized',collection:{automatic_enabled:true,scheduler:{status:'scheduled',next_run_at:Date.now()+60000,error:null},calendars:[{name:'<script>Synthetic literal calendar</script>',status:'idle',snapshot_complete:true,freshness:'recent',last_successful_sync:new Date().toISOString()}]}};
+ await page.reload();await ready();const collectionText=await page.locator('.google-collection-status').innerText();assert.match(collectionText,/Latest download complete/);assert.match(collectionText,/Recently checked/);assert.match(collectionText,/<script>Synthetic literal calendar<\/script>/);assert.doesNotMatch(await page.locator('#connections').innerText(),/no events synced yet/i);
+ googleState.collection.calendars[0].status='backoff';googleState.collection.calendars[0].freshness='stale';googleState.collection.scheduler.error='collection_global_limit';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Saved snapshot may be out of date/);assert.match(await page.locator('.google-collection-status').innerText(),/resume automatically/);
+ googleState.collection.scheduler.status='paused';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Checks paused after repeated failures/);
+ await page.screenshot({path:join(evidence,'google-collection-status.png'),fullPage:true});passed.push('synthetic collection UI: literal names, complete-check date, stale snapshot, request-limit wait and paused scheduler');
+ delete googleState.collection;googleState.status='authorized_not_synced';await page.reload();await ready();
  await page.getByRole('button',{name:'Clear selection',exact:true}).click();
  assert.deepEqual(googleSelection.record.calendar_ids,['synthetic_calendar_1']);
  await page.getByRole('button',{name:'Save calendar selection',exact:true}).click();

@@ -5,6 +5,9 @@ import { GoogleConnectionState } from './google-connection-state.js';
 import { googleConfiguration, createGoogleOAuthClient, GoogleOAuthError } from './google-oauth.js';
 import { ContractError, object, id } from './validation.js';
 import { createGoogleCalendarClient, CalendarProviderError } from './google-calendar.js';
+import { GoogleCollectionState } from './google-collection-state.js';
+import { GoogleScheduler, collectionEnabled } from './google-scheduler.js';
+import { collectGooglePage } from './google-collector.js';
 import { withGoogleAccess } from './google-access.js';
 
 export class StudentState extends DurableObject {
@@ -12,12 +15,50 @@ export class StudentState extends DurableObject {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       this.store = new StudentStore(ctx.storage);
+      this.collection = new GoogleCollectionState(this.store);
+      this.scheduler = new GoogleScheduler(this.store);
     });
   }
 
   // This RPC is called only by the authenticated same-service Worker. The
   // permanent binding also catches accidental routing to another student's DO.
-  async dispatch(message) { return this.store.dispatch(message); }
+  async reschedule(replace=false) {
+    const next=collectionEnabled(this.env)?this.scheduler.nextTime():null;
+    if(next===null){await this.ctx.storage.deleteAlarm();return;}
+    const existing=await this.ctx.storage.getAlarm();
+    if(replace || existing===null || next<existing)await this.ctx.storage.setAlarm(next);
+  }
+  async dispatch(message) {
+    if(!['google_selection.put','account.delete'].includes(message?.op))return this.store.dispatch(message);
+    return this.store.dispatch(message,{commit:callback=>this.ctx.storage.transaction(async()=>{
+      const result=callback();
+      if(result.ok && !result.replayed && message.op==='google_selection.put')this.scheduler.selectionChanged();
+      await this.reschedule();return result;
+    })});
+  }
+  async alarm() {
+    // Commit the reservation and recovery wakeup together, before external I/O.
+    const plan=await this.ctx.storage.transaction(async()=>{
+      if(!collectionEnabled(this.env)){await this.ctx.storage.deleteAlarm();return {kind:'idle'};}
+      const result=this.scheduler.reserve();await this.reschedule(true);return result;
+    });
+    if(plan.kind!=='reserved')return;
+    let result,failed=false,timer;
+    try {
+      const budget=await Promise.race([
+        this.env.COLLECTION_BUDGETS.getByName('google-calendar-v1').reserve({reservationId:plan.reservationId}),
+        new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('collection_budget_unavailable')),5000);})
+      ]);
+      if(!budget.allowed || budget.valid_until<=Date.now())result={kind:'global_wait',retry_at:Math.max(Date.now()+60000,budget.retry_at??0)};
+      else {
+        const pending=this.scheduler.state().pending;
+        if(this.scheduler.account()?.deleted || pending?.id!==plan.reservationId || pending.expires_at<=Date.now())result={kind:'stopped'};
+        else {const config=googleConfiguration(this.env);result=await collectGooglePage({...plan,collection:this.collection,state:new GoogleConnectionState(this.store,{key:config.key}),config});}
+      }
+    } catch { failed=true; }
+    finally {clearTimeout(timer);}
+    await this.ctx.storage.transaction(async()=>{this.scheduler.finish(plan.reservationId,result,failed);await this.reschedule(true);});
+  }
 
   // Narrow internal operations. Verifiers, tokens and leases never cross RPC.
   async google(message) {
@@ -26,12 +67,26 @@ export class StudentState extends DurableObject {
       const config = googleConfiguration(this.env);
       const state = new GoogleConnectionState(this.store, { key: config.key });
       const { tenantId, op, data } = message;
-      if (op === 'status') { object(data, ['connectionId']); return { ok: true, connection: state.status(tenantId, id(data.connectionId)) }; }
+      if (op === 'status') {
+        object(data, ['connectionId']);const connectionId=id(data.connectionId),connection=state.status(tenantId,connectionId);
+        if(collectionEnabled(this.env)){
+          await this.ctx.storage.transaction(async()=>{await this.reschedule();});
+          const collection={...this.collection.status(tenantId,connectionId),automatic_enabled:true,scheduler:this.scheduler.status()};
+          const complete=collection.calendars.length>0 && collection.calendars.every(calendar=>calendar.snapshot_complete);
+          Object.assign(connection,{status:connection.status==='authorized_not_synced'?'authorized':connection.status,collection,live_sync:complete && collection.calendars.every(calendar=>calendar.freshness==='recent'),last_successful_sync:complete?collection.calendars.map(calendar=>calendar.last_successful_sync).sort()[0]:null});
+        }
+        return {ok:true,connection};
+      }
+      if(op==='events'){
+        if(!collectionEnabled(this.env))return {ok:false,error:'google_collection_disabled',status:409};
+        object(data,['connectionId','calendarId','limit','cursor','snapshotId']);
+        return {ok:true,...this.collection.snapshot(tenantId,data)};
+      }
       if (op === 'begin') {
         object(data, ['connectionId', 'expectedRevision', 'attemptId', 'browserBinding']);
         return { ok: true, intent: await state.beginAuthorization(tenantId, { ...data, redirectUri: config.redirectUri }) };
       }
-      if (op === 'disconnect') return { ok: true, connection: state.disconnect(tenantId, data) };
+      if (op === 'disconnect') return await this.ctx.storage.transaction(async()=>{const connection=state.disconnect(tenantId,data);await this.reschedule();return {ok:true,connection};});
       if (op === 'calendars') {
         object(data, ['connectionId', 'pageToken']);
         const connectionId = id(data.connectionId);

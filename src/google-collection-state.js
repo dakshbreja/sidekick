@@ -135,6 +135,14 @@ export class GoogleCollectionState {
       return publicState(row,now);
     });
   }
+  status(tenant,connectionId) {
+    id(connectionId);
+    return this.transaction(tenant,()=>{
+      const selection=this.store.getRecord('google_selection',connectionId);
+      if(!selection || !this.store.activeGoogleConnection(connectionId,selection.connection_generation))return {active:false,calendars:[]};
+      return {active:true,calendars:selection.calendar_ids.map(calendarId=>{const row=this.row(connectionId,calendarId),name=selection.calendars.find(calendar=>calendar.id===calendarId)?.summary||'Unnamed calendar';return {name,...(row?publicState(row,this.now()):{connection_id:connectionId,calendar_id:calendarId,status:'queued',snapshot_complete:false,last_successful_sync:null,freshness:'never_synced',error:null,retry_at:null,recurrence_expanded:false})};})};
+    });
+  }
   snapshot(tenant,{connectionId,calendarId,limit=100,cursor=null,snapshotId}) {
     if(!Number.isSafeInteger(limit)||limit<1||limit>100||cursor!==null && (typeof cursor!=='string'||cursor.length>1024))fail('invalid_collection_read');
     return this.transaction(tenant,()=>{

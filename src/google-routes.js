@@ -38,6 +38,12 @@ export async function handleGoogleRoute({ request, url, env, identity, student }
     const query = queryData(url, ['connection_id', 'page_token']);
     return respond(await call('calendars', { connectionId: id(query.connection_id), ...(query.page_token === undefined ? {} : { pageToken: query.page_token }) }));
   }
+  if(url.pathname==='/api/google/events' && request.method==='GET'){
+    const query=queryData(url,['connection_id','calendar_id','limit','cursor','snapshot_id']);
+    if(query.limit!==undefined && !/^[1-9][0-9]{0,2}$/.test(query.limit))throw new HttpError('invalid_collection_read');
+    if(query.snapshot_id!==undefined && !/^[a-f0-9-]{36}$/.test(query.snapshot_id))throw new HttpError('invalid_collection_read');
+    return respond(await call('events',{connectionId:id(query.connection_id),calendarId:query.calendar_id,...(query.limit===undefined?{}:{limit:Number(query.limit)}),...(query.cursor===undefined?{}:{cursor:query.cursor}),...(query.snapshot_id===undefined?{}:{snapshotId:query.snapshot_id})}));
+  }
   if (url.pathname === '/api/google/selection' && request.method === 'GET') {
     const query = queryData(url, ['connection_id']);
     return respond(await student.dispatch({ tenantId: identity.tenantId, op: 'google_selection.get', data: { id: id(query.connection_id) } }));

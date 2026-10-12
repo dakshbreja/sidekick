@@ -1,4 +1,5 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
+import { initializeGoogleSchedule } from './google-scheduler.js';
 import { initializeGoogleCollection, clearGoogleCollection, reconcileGoogleSelection, exportGoogleSnapshots } from './google-collection-state.js';
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
@@ -45,6 +46,8 @@ export class StudentStore {
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)');
       initializeGoogleCollection(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)');
+      initializeGoogleSchedule(this);
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -61,7 +64,7 @@ export class StudentStore {
     if (meta.owner !== tenantId) fail('owner_mismatch', 403);
     return meta;
   }
-  async dispatch(message) {
+  async dispatch(message, {commit=callback=>this.storage.transactionSync(callback)}={}) {
     try {
       object(message, ['tenantId', 'op', 'data', 'operationId', 'expectedRevision', 'fingerprintData']);
       if (typeof message.tenantId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(message.tenantId)) fail('invalid_owner', 403);
@@ -92,7 +95,7 @@ export class StudentStore {
         if (message.operationId !== undefined || message.expectedRevision !== undefined || message.fingerprintData !== undefined) fail('unexpected_write_metadata');
         validated = validateRead(message.op, data);
       }
-      return this.storage.transactionSync(() => {
+      return await commit(() => {
         const meta = this.bind(message.tenantId);
         if (meta.deleted) return this.deletedResponse(meta, message, requestHash);
         if (calendarReplay) {
@@ -299,6 +302,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM google_connections');
     this.sql.exec('DELETE FROM google_choices');
     clearGoogleCollection(this);
+    this.sql.exec('DELETE FROM google_schedule');
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;
