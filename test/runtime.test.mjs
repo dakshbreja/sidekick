@@ -43,6 +43,15 @@ test('actual workerd and SQLite isolate independent signed student workspaces', 
     assert.notEqual(identities.a.tenantId, identities.b.tenantId);
   });
 
+  await t.test('receipt and export reads reject stale account guards before any receipt lookup', async () => {
+    for (const path of ['/api/receipts/synthetic-operation','/api/account/export','/api/onboarding']) {
+      const result = await json(runtime,path,{student:'b',headers:{'X-Workspace-Id':identities.a.tenantId}},403);
+      assert.equal(result.error,'workspace_changed');
+    }
+    const exported = await json(runtime,'/api/account/export',{student:'a'});
+    assert.equal(exported.workspace_id,identities.a.tenantId);
+  });
+
   await t.test('profiles and identical course IDs remain independent', async () => {
     for (const student of ['a', 'b']) {
       await json(runtime, '/api/onboarding', { student, method: 'PUT', body: packet('profile-save-01', {

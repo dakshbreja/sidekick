@@ -37,6 +37,14 @@ Open `http://127.0.0.1:8766`. The banner switches between Student A and Student 
 
 Use only synthetic information. The runner is restricted to loopback with host/origin checks; it is separate from the production Worker and must never be exposed as a shared sign-in service. See [STATUS.md](docs/STATUS.md) for verification evidence.
 
+Rendered browser QA is a separate, explicit command; `npm run check` does not run or imply it. Install a Chromium executable in the environment, then run:
+
+```sh
+BROWSER_EXECUTABLE=/usr/bin/chromium npm run test:browser
+```
+
+The harness starts its own disposable `npm run demo` on loopback port 8767, generates a fresh browser profile, and deletes that profile on exit. Set `DEMO_PORT` if the port is occupied. Screenshots, a synthetic export and the browser report go to an external temporary directory; `BROWSER_EVIDENCE_DIR` can select another directory outside the repository. No browser download or real identity is required.
+
 For the unconfigured application shell:
 
 ```sh
@@ -65,7 +73,7 @@ Ownership comes from a verified signed subject, not a submitted email or student
 
 The service can read stored content. This is **not user-held end-to-end encryption**. Export contains the current workspace; save receipts retain earlier saved versions for exact retries until deletion. Deletion clears active content and old receipts, retires the identity, and retains a minimal tombstone and deletion receipt. Provider recovery copies have separate retention behavior. Read the precise [storage and deletion contract](docs/ARCHITECTURE.md#storage-lifecycle-and-deletion) before using real student data.
 
-The browser keeps uncertain save intents only while the current page remains open. A reload or browser crash loses that client intent; inspect the stored records and receipts before recreating an uncertain write. Server receipt persistence does not make the browser queue crash-proof.
+The browser persists only unconfirmed save packets in an account-scoped recovery outbox. After reload, browser restart or reconnect, use **Check receipts and recover saves**. It reads stored receipts first and replays the exact original packet only when its receipt is explicitly missing. It never retries automatically. Confirmed saves and deletion remove the corresponding local data. Pending text and ICS contents remain plaintext in that browser profile until reconciliation; account separation is not protection from someone with access to the profile. See [SECURITY.md](docs/SECURITY.md#browser-recovery-outbox) for cleanup and limitations.
 
 ## Developer references
 
