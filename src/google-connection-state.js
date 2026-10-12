@@ -191,6 +191,7 @@ export class GoogleConnectionState {
   #invalidate(meta, current) {
     const next = { id: current.id, revision: current.revision + 1, generation: current.generation + 1, status: 'reauthorization_required' };
     this.#save(meta, next);
+    this.#store.sql.exec('DELETE FROM google_choices WHERE connection_id = ?', current.id);
     return this.#status(next);
   }
   // Internal only. A ready access token or refresh claim must never cross RPC.
@@ -282,6 +283,7 @@ export class GoogleConnectionState {
       if (!current && this.#store.row('SELECT COUNT(*) AS n FROM google_connections').n >= GOOGLE_STATE_LIMITS.connections) fail('connection_limit_reached', 409);
       const next = { id: connectionId, revision: expectedRevision + 1, generation: (current?.generation ?? 0) + 1, status: 'disconnected' };
       this.#save(meta, next);
+      this.#store.sql.exec('DELETE FROM google_choices WHERE connection_id = ?', connectionId);
       return { ...this.#status(next), provider_revocation: 'not_attempted' };
     });
   }

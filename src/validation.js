@@ -50,7 +50,7 @@ function siteUrl(value) {
       url.hostname === 'localhost' || !url.hostname.includes('.') || url.port) fail('unsafe_site_url');
   return url.href;
 }
-export const WRITES = new Set(['profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'account.delete']);
+export const WRITES = new Set(['profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
 // Used by both the pre-parse replay lookup and the final calendar save. No
 // time-dependent parsing belongs here: exact original bytes establish identity.
 export function validateCalendarFingerprint(data) {
@@ -118,6 +118,19 @@ export function validateWrite(op, data) {
       const value = { id: id(data.id), provider: enumeration(data.provider, ['elc', 'google_calendar', 'google_drive', 'manual', 'other']), site_url: siteUrl(data.site_url) };
       return { kind: 'connections', id: value.id, value };
     }
+    case 'google_selection.put': {
+      object(data, ['id', 'connection_generation', 'calendar_ids']);
+      const generation = revision(data.connection_generation);
+      if (generation < 1 || !Array.isArray(data.calendar_ids) || data.calendar_ids.length > 20) fail('invalid_calendar_selection');
+      const calendar_ids = data.calendar_ids.map(value => {
+        string(value, 1024);
+        if (/[\u0000-\u0020\u007f]/.test(value) || ['.', '..'].includes(value)) fail('invalid_calendar_selection');
+        return value;
+      });
+      if (new Set(calendar_ids).size !== calendar_ids.length) fail('duplicate_calendar_selection');
+      const value = { id: id(data.id), connection_generation: generation, calendar_ids: calendar_ids.sort() };
+      return { kind: 'google_selection', id: value.id, value };
+    }
     case 'calendar.put': {
       object(data, ['id', 'course_id', 'source_id', 'events', 'coverage']);
       if (!Array.isArray(data.events) || data.events.length > 500) fail('invalid_events');
@@ -161,12 +174,13 @@ export function validateRead(op, data) {
     'learning.get': ['course_id', 'session_id'],
     'connections.list': ['provider', 'limit', 'cursor'],
     'calendar.list': ['course_id', 'source_id', 'limit', 'cursor'],
+    'google_selection.get': ['id'],
     'receipt.get': ['operation_id'], 'account.export': [],
   }[op];
   if (!fields) fail('unknown_operation', 404);
   object(data, fields);
   for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id']) if (data[key] !== undefined) id(data[key]);
-  if (op === 'materials.get' && data.id === undefined) fail('invalid_id');
+  if (['materials.get', 'google_selection.get'].includes(op) && data.id === undefined) fail('invalid_id');
   if (op === 'learning.get' && data.course_id === undefined) fail('invalid_id');
   if (op === 'receipt.get') operationId(data.operation_id);
   if (data.status !== undefined) enumeration(data.status, ['not_started', 'in_progress', 'blocked', 'done']);

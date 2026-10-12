@@ -1,6 +1,6 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 import { base64url } from 'jose';
-import { HttpError, json, readJSON, queryData } from './http.js';
+import { HttpError, json, readJSON, queryData, writePacket } from './http.js';
 import { object, id, operationId, revision } from './validation.js';
 import { GOOGLE_CALLBACK_PATH, googleConfiguration, authorizationUrl } from './google-oauth.js';
 const COOKIE = '__Host-sb-google-browser';
@@ -38,11 +38,19 @@ export async function handleGoogleRoute({ request, url, env, identity, student }
     const query = queryData(url, ['connection_id', 'page_token']);
     return respond(await call('calendars', { connectionId: id(query.connection_id), ...(query.page_token === undefined ? {} : { pageToken: query.page_token }) }));
   }
+  if (url.pathname === '/api/google/selection' && request.method === 'GET') {
+    const query = queryData(url, ['connection_id']);
+    return respond(await student.dispatch({ tenantId: identity.tenantId, op: 'google_selection.get', data: { id: id(query.connection_id) } }));
+  }
   if (request.method !== 'POST') throw new HttpError('method_not_allowed', 405);
   // New cookie-bearing operations require both same-origin evidence and the
   // workspace observed by the initiating UI, even if a request has no Origin.
   if (request.headers.get('Origin') !== config.origin || request.headers.get('X-Workspace-Id') !== identity.tenantId) throw new HttpError('google_intent_required', 403);
-  const data = await readJSON(request, 4096);
+  const data = await readJSON(request, url.pathname === '/api/google/selection' ? 30000 : 4096);
+  if (url.pathname === '/api/google/selection') {
+    const packet = writePacket(data);
+    return respond(await student.dispatch({ tenantId: identity.tenantId, op: 'google_selection.put', ...packet }));
+  }
   if (url.pathname === '/api/google/prepare') {
     object(data, []);
     const value = browserBinding(request) || base64url.encode(crypto.getRandomValues(new Uint8Array(32)));

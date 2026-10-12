@@ -1,7 +1,7 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
-const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar'];
+const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar', 'google_selection'];
 export const STORE_LIMITS = Object.freeze({ recordBytes: 128000, totalRecordBytes: 10000000, totalReceiptBytes: 20000000, receipts: 5000, recordsPerKind: 100, calendars: 20 });
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
 const canonical = (value) => {
@@ -40,6 +40,8 @@ export class StudentStore {
       // Keeping it in this database makes deletion and its tombstone atomic.
       this.sql.exec('CREATE TABLE IF NOT EXISTS google_connections (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)');
+      this.sql.exec('CREATE TABLE IF NOT EXISTS google_choices (connection_id TEXT NOT NULL, generation INTEGER NOT NULL, calendar_id TEXT NOT NULL, observed_at INTEGER NOT NULL, body TEXT NOT NULL, byte_count INTEGER NOT NULL, PRIMARY KEY(connection_id, calendar_id))');
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (3)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -122,6 +124,33 @@ export class StudentStore {
   requireCourse(course_id) {
     if (course_id && !this.getRecord('courses', course_id)) fail('course_not_found', 404);
   }
+  googleConnection(connectionId) {
+    const row = this.row('SELECT body FROM google_connections WHERE id = ?', connectionId);
+    return row ? JSON.parse(row.body) : null;
+  }
+  activeGoogleConnection(connectionId, generation) {
+    const connection = this.googleConnection(connectionId);
+    return connection?.status === 'authorized_not_synced' && Boolean(connection.tokens) && connection.generation === generation && !(connection.refresh_expires_at && connection.refresh_expires_at <= Date.parse(this.clock()));
+  }
+  // Only normalized calendar metadata from the trusted provider adapter reaches
+  // this method. The browser cannot register its own selectable calendar IDs.
+  cacheGoogleChoices(tenantId, connectionId, generation, items) {
+    if (typeof tenantId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(tenantId) || !Array.isArray(items) || items.length > 100) fail('invalid_calendar_choices');
+    return this.storage.transactionSync(() => {
+      const meta = this.bind(tenantId); if (meta.deleted) fail('account_deleted', 410);
+      if (!this.activeGoogleConnection(connectionId, generation)) fail('google_access_changed', 409);
+      const now = Date.parse(this.clock());
+      this.sql.exec('DELETE FROM google_choices WHERE observed_at < ? OR (connection_id = ? AND generation != ?)', now - 86400000, connectionId, generation);
+      for (const item of items) {
+        object(item, ['id', 'summary', 'timeZone', 'accessRole', 'primary']);
+        if (typeof item.id !== 'string' || !item.id.length || item.id.length > 1024 || /[\u0000-\u0020\u007f]/.test(item.id) || !['reader', 'writerWithoutPrivateAccess', 'writer', 'owner'].includes(item.accessRole)) fail('invalid_calendar_choices');
+        const body = JSON.stringify(item); if (bytes(body) > 8000) fail('invalid_calendar_choices');
+        this.sql.exec('INSERT INTO google_choices (connection_id, generation, calendar_id, observed_at, body, byte_count) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(connection_id, calendar_id) DO UPDATE SET generation = excluded.generation, observed_at = excluded.observed_at, body = excluded.body, byte_count = excluded.byte_count', connectionId, generation, item.id, now, body, bytes(body));
+      }
+      const size = this.row('SELECT COUNT(*) AS n, COALESCE(SUM(byte_count), 0) AS bytes FROM google_choices');
+      if (size.n > 1000 || size.bytes > 1000000) fail('calendar_choices_limit', 409);
+    });
+  }
   read(meta, op, data) {
     const common = { ok: true, account_revision: meta.account_revision };
     if (op === 'account.export') {
@@ -141,6 +170,11 @@ export class StudentStore {
     if (op === 'profile.get') {
       const record = this.getRecord('profile', 'profile');
       return { ...common, record, revision: record?.revision ?? 0 };
+    }
+    if (op === 'google_selection.get') {
+      const record = this.getRecord('google_selection', data.id);
+      if (this.getRecord('connections', data.id)?.provider !== 'google_calendar') fail('google_connection_not_found', 404);
+      return { ...common, record, revision: record?.revision ?? 0, active: Boolean(record && this.activeGoogleConnection(data.id, record.connection_generation)), collection_status: 'not_synced' };
     }
     if (op === 'materials.get') {
       const record = this.getRecord('materials', data.id);
@@ -168,7 +202,7 @@ export class StudentStore {
     });
     return { ...common, records, complete: filtered.length <= limit, next_cursor: filtered.length > limit ? records.at(-1).id : null };
   }
-  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [] }; }
+  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [] }; }
   write(meta, message, input, requestHash) {
     const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
     if (saved) {
@@ -179,6 +213,15 @@ export class StudentStore {
     const old = this.getRecord(input.kind, input.id);
     if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
     this.requireCourse(input.value.course_id);
+    if (input.kind === 'google_selection') {
+      const selected = input.value;
+      if (this.getRecord('connections', input.id)?.provider !== 'google_calendar' || !this.activeGoogleConnection(input.id, selected.connection_generation)) fail('google_access_changed', 409);
+      for (const calendarId of selected.calendar_ids) {
+        const choice = this.row('SELECT generation, observed_at FROM google_choices WHERE connection_id = ? AND calendar_id = ?', input.id, calendarId);
+        const retained = old?.connection_generation === selected.connection_generation && old.calendar_ids.includes(calendarId);
+        if (!retained && (!choice || choice.generation !== selected.connection_generation || choice.observed_at <= Date.parse(this.clock()) - 3600000)) fail('calendar_choice_not_verified', 409);
+      }
+    }
     if (input.kind === 'calendar') {
       if (!this.getRecord('connections', input.value.source_id)) fail('connection_not_found', 404);
       const calendars = this.sql.exec('SELECT id, body FROM records WHERE kind = ?', 'calendar').toArray();
@@ -194,6 +237,15 @@ export class StudentStore {
     const now = this.clock();
     const record = { ...input.value, revision: (old?.revision ?? 0) + 1, created_at: old?.created_at ?? now, updated_at: now };
     if (input.kind === 'connections') Object.assign(record, { status: record.provider === 'manual' ? 'manual_import' : 'needs_authorization', adapter_available: false, last_successful_sync: null });
+    if (input.kind === 'google_selection') Object.assign(record, { collection_status: 'not_synced', last_successful_sync: null,
+      calendars: record.calendar_ids.map(calendarId => {
+        const choice = this.row('SELECT generation, body, observed_at FROM google_choices WHERE connection_id = ? AND calendar_id = ?', input.id, calendarId);
+        if (choice?.generation === record.connection_generation) {
+          const source = JSON.parse(choice.body);
+          return { id: calendarId, summary: source.summary ?? '', time_zone: source.timeZone ?? null, source_observed_at: choice.observed_at };
+        }
+        return old.calendars.find(calendar => calendar.id === calendarId);
+      }) });
     if (input.kind === 'learning') record.assessment = assessment(record.observations);
     if (input.kind === 'calendar') Object.assign(record, { imported_at: now, live_sync: false, source_freshness: 'unknown', coverage: { ...record.coverage, meaning: 'parsed_import_window_only' } });
     if (input.kind === 'progress') record.provenance = 'student_report_only';
@@ -228,6 +280,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM records');
     this.sql.exec('DELETE FROM operations');
     this.sql.exec('DELETE FROM google_connections');
+    this.sql.exec('DELETE FROM google_choices');
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;

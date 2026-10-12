@@ -39,6 +39,7 @@ export class StudentState extends DurableObject {
         const accessed = await withGoogleAccess({ state, tenantId, connectionId, config, oauth: createGoogleOAuthClient(),
           task: accessToken => createGoogleCalendarClient().calendarsPage({ accessToken, ...(data.pageToken === undefined ? {} : { pageToken: data.pageToken }) }) });
         state.assertActiveGeneration(tenantId, connectionId, accessed.generation);
+        this.store.cacheGoogleChoices(tenantId, connectionId, accessed.generation, accessed.value.items);
         return { ok: true, page: accessed.value, connection: state.status(tenantId, connectionId), collection_scope: 'calendar_choices_only', live_sync: false };
       }
       if (op !== 'callback') return { ok: false, error: 'unknown_operation', status: 404 };

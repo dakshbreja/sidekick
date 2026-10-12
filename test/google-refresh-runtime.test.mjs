@@ -101,3 +101,18 @@ test('invalid listing cursors and caller identity fields cause no token refresh 
   assert.equal((await f.list('a', '&tenantId=synthetic_foreign')).status, 400);
   assert.equal(f.calls.refresh, 0); assert.equal(f.calls.list, 0);
 });
+
+test('real authenticated discovery enables receipt-verified selection and survives full restart', async t => {
+  const f = await setup(t, { persistent: true });
+  const body = { id: 'google_a', connection_generation: 1, calendar_ids: ['example-calendar'], expected_revision: 0, operation_id: 'synthetic_selection_1' };
+  const save = () => f.request('/api/google/selection', { method: 'POST', headers: f.headers, body });
+  assert.equal((await save()).status, 409);
+  await f.list(); const saved = await (await save()).json(); assert.equal(saved.ok, true); assert.equal(saved.receipt.operation, 'google_selection.put');
+  await f.restart();
+  const receipt = await (await f.request('/api/receipts/synthetic_selection_1')).json(); assert.deepEqual(receipt.receipt, saved.receipt);
+  assert.equal((await (await save()).json()).replayed, true);
+  const selection = await (await f.request('/api/google/selection?connection_id=google_a')).json(); assert.equal(selection.active, true); assert.equal(selection.record.calendars[0].summary, 'Synthetic calendar'); assert.equal(selection.collection_status, 'not_synced');
+  assert.equal((await f.request('/api/google/selection?connection_id=google_a', { student: 'b' })).status, 404);
+  assert.equal((await f.request('/api/google/selection', { student: 'b', method: 'POST', headers: f.headers, body })).status, 403);
+  assert.equal((await f.request('/api/google/selection', { method: 'POST', headers: { ...f.headers, Origin: 'https://foreign.example' }, body })).status, 403);
+});
