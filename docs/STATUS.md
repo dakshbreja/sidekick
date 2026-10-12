@@ -10,8 +10,8 @@ The clean community foundation is implemented locally. It supports separate, ini
 |---|---|
 | Identity | Server verification of signed Cloudflare Access end-user assertions, pinned issuer/audience and HMAC-derived student ownership. Unconfigured authentication fails closed. |
 | Isolation | One SQLite Durable Object per student; permanent owner binding, strict fields and scoped resources, receipts, retries and exports. |
-| Onboarding | Empty profile, arbitrary courses/sections/terms and source metadata. No personal data or account connections are preloaded. |
-| Materials | Manual course text with scoped metadata listings and individual retrieval. |
+| Onboarding | Empty academic profile with optional institution, self-reported school email, study goals and learning preferences. Login email comes from the signed identity. Arbitrary courses/sections/terms and source metadata; no preloaded personal records. |
+| Materials | Pasted course text or optional UTF-8 text exports of notes/transcripts, preview before save, source/type labels and inert text reading. No recording subscription needed; audio/video/PDF extraction is unavailable. |
 | Calendar | Bounded ICS file import, recurrence coverage warnings, stable exact retries and revision-safe replacement of a course/source calendar. Imports remain explicitly dated and non-live. |
 | Coursework | API for reported progress with a submission requirement for `done`. Source-verified completion is unsupported. |
 | Learning | API for bounded saved sessions and fresh reads. Independent observed-correct work, assisted work, wrong/partial responses and discussion remain distinct. No model calls or automatic evaluation. |
@@ -122,3 +122,11 @@ The updated gate passed **167 tests**, privacy scanning, plugin scope audit and 
 ## Next milestone
 
 Configure a separately protected deployment, connect one real source through a supported per-student authorization flow, and prove that two consenting students can onboard independently without source edits or shared credentials. Complete the [pilot release gates](ARCHITECTURE.md#pilot-release-gates) before admitting real students; expand automatic collection and teaching after that evidence exists.
+
+## Standalone profile and optional imports, October 12, 2026
+
+The local branch implements the first stage of [PRODUCT-PLAN.md](PRODUCT-PLAN.md). The gate passes **171 tests**, including actual workerd/SQLite save, replay, profile-clearing, export, restart, deletion and two-student isolation checks with extended profile/material fields. Absent new fields remain absent from normalized legacy requests, preserving old save fingerprints. Login email is taken from the signed assertion; profile requests cannot spoof login email, verified enrollment or a student ID. No real student records were used.
+
+The Codex in-app browser independently verified synthetic profile save/receipt confirmation, course creation, `.vtt` file preview, transcript save/readback with script-looking content rendered literally, an empty Student B workspace, and restoration of Student A after switching back and reloading. This is local UI evidence, not hosted identity or cross-client AI evidence.
+
+The optional-tools screen distinguishes available text imports from planned ChatGPT/Claude connections and website AI. Editable preferences do not establish understanding or access to other chats. Current preferences can be cleared; historical save receipts retain earlier values until account deletion under the existing recovery contract. The signed-in Cloudflare account was confirmed locally through the official CLI without reading or displaying its credential. Provider deployment, Access setup, source authorization and model spending remain separate steps.

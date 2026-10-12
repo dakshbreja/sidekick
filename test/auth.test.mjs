@@ -13,8 +13,9 @@ test('signed users receive distinct frozen server-derived tenant identities', as
   const a = await verify(fixture.tokens.a);
   const b = await verify(fixture.tokens.b);
   assert.ok(Object.isFrozen(a));
-  assert.deepEqual(Object.keys(a).sort(), ['issuer', 'subject', 'tenantId']);
+  assert.deepEqual(Object.keys(a).sort(), ['email', 'issuer', 'subject', 'tenantId']);
   assert.equal(a.subject, 'synthetic-student-a');
+  assert.equal(a.email, 'student-a@example.invalid');
   assert.match(a.tenantId, /^[A-Za-z0-9_-]{43}$/);
   assert.notEqual(a.tenantId, b.tenantId);
   assert.deepEqual(await verify(fixture.tokens.a), a);
@@ -26,6 +27,7 @@ test('tenant identity follows signed subject, not changed email, tenant claims o
     email: 'renamed@example.invalid', tenantId: 'other-user', user_id: 'other-user', owner: 'other-user',
   }));
   assert.equal(changed.tenantId, a.tenantId);
+  assert.equal(changed.email, 'renamed@example.invalid');
   const newKey = { ...fixture.config, tenantIdKey: base64url.encode(crypto.getRandomValues(new Uint8Array(32))) };
   assert.notEqual((await verify(fixture.tokens.a, newKey)).tenantId, a.tenantId);
 });

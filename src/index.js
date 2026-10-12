@@ -3,6 +3,7 @@ import {HttpError,json,readJSON,mutationOrigin,queryData,writePacket} from './ht
 import {calendarImport} from './calendar-import.js';
 import {PAGE, CLIENT_SCRIPT, STYLE} from './ui.js';
 import {WRITE_MODULE} from './write-intent.js';
+import {TEXT_IMPORT_MODULE} from './text-import.js';
 export {StudentState} from './student-object.js';
 
 const routes = Object.freeze({
@@ -13,7 +14,7 @@ const routes = Object.freeze({
   '/api/connections': {get:'connections.list',put:'connections.put',query:['provider']},
   '/api/calendar': {get:'calendar.list',query:['course_id','source_id']},
 });
-const capabilities = Object.freeze({manual_course_setup:true,manual_materials:true,calendar_file_import:true,
+const capabilities = Object.freeze({manual_course_setup:true,manual_materials:true,calendar_file_import:true,text_file_import:true,academic_profile:true,
   google_calendar_oauth:false,elc_sync:false,background_collection:false,ai_teaching:false});
 const staticResponse=(body,type)=>new Response(body,{headers:{'Content-Type':type,'Cache-Control':'no-store',
   'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','Permissions-Policy':'camera=(), microphone=(), geolocation=()',
@@ -26,6 +27,7 @@ export default {
       if(request.method==='GET' && path==='/') return staticResponse(PAGE,'text/html; charset=utf-8');
       if(request.method==='GET' && path==='/client.js') return staticResponse(CLIENT_SCRIPT,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/write-intent.js') return staticResponse(WRITE_MODULE,'text/javascript; charset=utf-8');
+      if(request.method==='GET' && path==='/text-import.js') return staticResponse(TEXT_IMPORT_MODULE,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/style.css') return staticResponse(STYLE,'text/css; charset=utf-8');
       if(request.method==='GET' && path==='/health') return json({ok:true,service:'school-bridge-community',scope:'http_only'});
       if(!path.startsWith('/api/')) return json({ok:false,error:'not_found'},404);
@@ -44,7 +46,7 @@ export default {
         queryData(url,[]);
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
-        return json({ok:true,workspace_id:identity.tenantId,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
+        return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
           connections:results[2].records,capabilities});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {

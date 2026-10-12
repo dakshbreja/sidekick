@@ -62,8 +62,19 @@ export function validateCalendarFingerprint(data) {
 export function validateWrite(op, data) {
   switch (op) {
     case 'profile.put': {
-      object(data, ['display_name', 'timezone', 'consent_version']);
-      return { kind: 'profile', id: 'profile', value: { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) } };
+      object(data, ['display_name', 'timezone', 'consent_version', 'institution', 'school_email', 'study_goals', 'learning_preferences']);
+      const value = { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) };
+      // Preserve the original fingerprint for queued v1 saves: absent additions
+      // stay absent. These self-reported fields never grant school access.
+      if (data.institution !== undefined) value.institution = string(data.institution, 200, { empty: true });
+      if (data.school_email !== undefined) {
+        value.school_email = string(data.school_email, 320, { empty: true });
+        if (value.school_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.school_email)) fail('invalid_school_email');
+      }
+      for (const field of ['study_goals', 'learning_preferences']) {
+        if (data[field] !== undefined) value[field] = string(data[field], 2000, { empty: true, multiline: true });
+      }
+      return { kind: 'profile', id: 'profile', value };
     }
     case 'courses.put': {
       object(data, ['id', 'code', 'title', 'section', 'term_id']);
@@ -71,8 +82,10 @@ export function validateWrite(op, data) {
       return { kind: 'courses', id: value.id, value };
     }
     case 'materials.put': {
-      object(data, ['id', 'course_id', 'title', 'text', 'source_kind']);
-      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 100000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual']) };
+      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label']);
+      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 100000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual', 'text_import']) };
+      if (data.material_kind !== undefined) value.material_kind = enumeration(data.material_kind, ['course_text', 'notes', 'transcript']);
+      if (data.source_label !== undefined) value.source_label = string(data.source_label, 200, { empty: true });
       return { kind: 'materials', id: value.id, value };
     }
     case 'progress.put': {

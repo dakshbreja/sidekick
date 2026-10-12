@@ -153,7 +153,7 @@ export async function verifyIdentity(token, config, keyResolver) {
       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const digest = await crypto.subtle.sign('HMAC', hmacKey,
       encoder.encode(JSON.stringify(['school-bridge-student-v1', config.issuer, payload.sub])));
-    return Object.freeze({ tenantId: base64url.encode(new Uint8Array(digest)), subject: payload.sub, issuer: config.issuer });
+    return Object.freeze({ tenantId: base64url.encode(new Uint8Array(digest)), subject: payload.sub, issuer: config.issuer, email: payload.email });
   } catch (error) {
     if (error instanceof AuthenticationError) throw error;
     if (['ERR_JWKS_TIMEOUT', 'ERR_JWKS_INVALID', 'ERR_JWK_INVALID'].includes(error?.code)) throw unavailable();

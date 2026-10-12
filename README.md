@@ -7,8 +7,8 @@ This is a clean successor with a deliberately smaller scope than the personal Sc
 ## What works in this foundation
 
 - Server-verified Cloudflare Access identities, with separate student ownership enforced in storage.
-- Empty onboarding, arbitrary course/section/term records, and source registration metadata.
-- Manual course text and bounded `.ics` calendar imports with explicit import dates and coverage limitations.
+- Empty onboarding with an academic profile, optional school information and study preferences, arbitrary course/section/term records, and source registration metadata.
+- Pasted course text, optional notes/transcript text exports (`.txt`, `.md`, `.vtt`, `.srt`), and bounded `.ics` calendar imports with explicit import dates and coverage limitations.
 - APIs for reported coursework progress and saved learning handoffs. Incorrect, partial and explained answers do not count as independent observed understanding.
 - Revision checks, exact-retry save receipts, current-workspace export and account deletion.
 - A browser interface for setup, courses, sources, calendar imports, material text, export and deletion.
@@ -93,3 +93,7 @@ Run `npm run check:privacy` and review the exact Git diff before a commit or pus
 ## Copyright
 
 Copyright 2026 Daksh Breja. All rights reserved. This is proprietary software; no open-source license is granted. See [COPYRIGHT](COPYRIGHT). Dependencies retain their own licenses and notices. This is an independent project; no university endorsement is claimed.
+
+## Standalone product direction
+
+The website is the core student experience. ChatGPT, Claude and recording tools are optional integrations; live clients and AI teaching are not connected yet. [PRODUCT-PLAN.md](docs/PRODUCT-PLAN.md) tracks the complete implementation and release gates.
