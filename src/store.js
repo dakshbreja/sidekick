@@ -36,6 +36,10 @@ export class StudentStore {
       this.sql.exec('CREATE TABLE IF NOT EXISTS operations (operation_id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, body TEXT NOT NULL, byte_count INTEGER NOT NULL)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)');
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (1)');
+      // Private connector state never enters records, operation receipts or exports.
+      // Keeping it in this database makes deletion and its tombstone atomic.
+      this.sql.exec('CREATE TABLE IF NOT EXISTS google_connections (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (2)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -223,6 +227,7 @@ export class StudentStore {
     const result = { ok: true, deleted: true, revision: accountRevision, account_revision: accountRevision, receipt };
     this.sql.exec('DELETE FROM records');
     this.sql.exec('DELETE FROM operations');
+    this.sql.exec('DELETE FROM google_connections');
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;
