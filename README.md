@@ -70,6 +70,7 @@ The browser keeps uncertain save intents only while the current page remains ope
 ## Developer references
 
 - [Architecture and release gates](docs/ARCHITECTURE.md)
+- [Codex cloud handoff](docs/CLOUD-HANDOFF.md)
 - [Current status and evidence limits](docs/STATUS.md)
 - [Security boundary and deployment checklist](docs/SECURITY.md)
 - [API and data contract](docs/CONTRACT.md)

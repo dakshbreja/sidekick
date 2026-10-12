@@ -1,5 +1,5 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
-import { ContractError, WRITES, fail, object, operationId, revision, string, validateRead, validateWrite } from './validation.js';
+import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
 const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar'];
 export const STORE_LIMITS = Object.freeze({ recordBytes: 128000, totalRecordBytes: 10000000, totalReceiptBytes: 20000000, receipts: 5000, recordsPerKind: 100, calendars: 20 });
@@ -58,26 +58,25 @@ export class StudentStore {
       if (typeof message.tenantId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(message.tenantId)) fail('invalid_owner', 403);
       if (typeof message.op !== 'string') fail('unknown_operation', 404);
       const writing = WRITES.has(message.op);
+      const calendarReplay = message.op === 'calendar.replay';
       const data = message.data ?? {};
       let validated;
       let requestHash;
-      if (writing) {
+      if (writing || calendarReplay) {
         operationId(message.operationId);
         revision(message.expectedRevision);
-        validated = validateWrite(message.op, data);
+        validated = calendarReplay ? { value: validateCalendarFingerprint(data) } : validateWrite(message.op, data);
         let fingerprint = validated.value;
         if (message.fingerprintData !== undefined) {
           if (message.op !== 'calendar.put') fail('unexpected_fingerprint');
           // Trusted Worker-only override: fingerprint original ICS, not the
           // current parser window or timestamps, for exact delayed retries.
-          object(message.fingerprintData, ['id', 'course_id', 'source_id', 'ics']);
-          const raw = message.fingerprintData;
-          if (raw.id !== validated.value.id || (raw.course_id ?? null) !== validated.value.course_id || raw.source_id !== validated.value.source_id) fail('fingerprint_identity_mismatch');
-          string(raw.ics, 250000, { multiline: true });
-          fingerprint = { id: raw.id, course_id: raw.course_id ?? null, source_id: raw.source_id, ics: raw.ics };
+          const raw = validateCalendarFingerprint(message.fingerprintData);
+          if (raw.id !== validated.value.id || raw.course_id !== validated.value.course_id || raw.source_id !== validated.value.source_id) fail('fingerprint_identity_mismatch');
+          fingerprint = raw;
         }
-        if (bytes(JSON.stringify(validated.value)) > STORE_LIMITS.recordBytes) fail('record_too_large', 413);
-        const request = canonical({ op: message.op, data: fingerprint, expectedRevision: message.expectedRevision });
+        if (!calendarReplay && bytes(JSON.stringify(validated.value)) > STORE_LIMITS.recordBytes) fail('record_too_large', 413);
+        const request = canonical({ op: calendarReplay ? 'calendar.put' : message.op, data: fingerprint, expectedRevision: message.expectedRevision });
         if (bytes(request) > 300000) fail('record_too_large', 413);
         requestHash = await sha256(request);
       } else {
@@ -87,6 +86,12 @@ export class StudentStore {
       return this.storage.transactionSync(() => {
         const meta = this.bind(message.tenantId);
         if (meta.deleted) return this.deletedResponse(meta, message, requestHash);
+        if (calendarReplay) {
+          const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
+          if (!saved) return { ok: true, found: false };
+          if (saved.request_hash !== requestHash) fail('operation_id_conflict', 409);
+          return { ok: true, found: true, result: { ...JSON.parse(saved.body), replayed: true } };
+        }
         return writing ? this.write(meta, message, validated, requestHash) : this.read(meta, message.op, validated);
       });
     } catch (error) {

@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { StudentStore, STORE_LIMITS } from '../src/store.js';
+import { calendarImport } from '../src/calendar-import.js';
 import { sqliteFixture } from './sqlite-fixture.mjs';
 
 const ALICE = 'synthetic_student_alpha';
@@ -224,6 +225,41 @@ test('calendar exact raw import retry survives changed server-derived coverage w
   const replay = await write('calendar.put', changedWindow, 0, 'calendar_save_1', { fingerprintData });
   assert.deepEqual(replay, { ...first, replayed: true });
   assert.equal((await write('calendar.put', changedWindow, 0, 'calendar_save_1', { fingerprintData: { ...fingerprintData, ics: 'DIFFERENT' } })).error, 'operation_id_conflict');
+});
+
+test('pre-parse calendar replay survives a clock shift that now exceeds the import event limit', async (t) => {
+  const { write, store, read } = setup(t);
+  await write('courses.put', course()); await write('connections.put', connection());
+  const ics = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${Array.from({ length: 501 }, (_, index) => `BEGIN:VEVENT\r\nUID:future-${index}\r\nDTSTART:20270420T120000Z\r\nSUMMARY:Synthetic future event ${index}\r\nEND:VEVENT\r\n`).join('')}END:VCALENDAR\r\n`;
+  const raw = { id: 'calendar_a', course_id: 'course_a', source_id: 'import_a', ics };
+  const initial = calendarImport(raw, { now: new Date('2026-10-12T12:00:00Z') });
+  assert.equal(initial.events.length, 0);
+  const saved = await write('calendar.put', initial, 0, 'future_import_1', { fingerprintData: raw });
+  assert.equal(saved.ok, true);
+  assert.throws(() => calendarImport(raw, { now: new Date('2026-11-05T12:00:00Z') }), { code: 'calendar_event_limit' });
+  const replay = await store.dispatch({ tenantId: ALICE, op: 'calendar.replay', data: raw, operationId: 'future_import_1', expectedRevision: 0 });
+  assert.deepEqual(replay, { ok: true, found: true, result: { ...saved, replayed: true } });
+  assert.equal((await read('account.export')).account_revision, saved.account_revision);
+});
+
+test('pre-parse calendar replay validates full input, revision and ownership instead of trusting an operation ID', async (t) => {
+  const { write, store, read } = setup(t);
+  await write('courses.put', course()); await write('connections.put', connection());
+  const raw = { id: 'calendar_a', course_id: 'course_a', source_id: 'import_a', ics: 'BEGIN:VCALENDAR\nEND:VCALENDAR' };
+  const saved = await write('calendar.put', calendar(), 0, 'raw_import_1', { fingerprintData: raw });
+  const lookup = (data = raw, extra = {}) => store.dispatch({ tenantId: ALICE, op: 'calendar.replay', data, operationId: 'raw_import_1', expectedRevision: 0, ...extra });
+  for (const changed of [{ ...raw, id: 'other_calendar' }, { ...raw, source_id: 'other_source' }, { ...raw, course_id: 'other_course' }, { ...raw, ics: raw.ics + '\n' }]) assert.equal((await lookup(changed)).error, 'operation_id_conflict');
+  assert.equal((await lookup(raw, { expectedRevision: 1 })).error, 'operation_id_conflict');
+  assert.equal((await lookup({ ...raw, tenant_id: BOB })).error, 'unknown_field');
+  assert.equal((await lookup(raw, { fingerprintData: raw })).error, 'unexpected_fingerprint');
+  assert.equal((await lookup({ ...raw, ics: '界'.repeat(100000) })).error, 'calendar_too_large');
+  assert.equal((await lookup(raw, { tenantId: BOB })).error, 'owner_mismatch');
+  assert.deepEqual(await lookup(raw, { operationId: 'unknown_import' }), { ok: true, found: false });
+  const other = setup(t);
+  assert.deepEqual(await other.store.dispatch({ tenantId: BOB, op: 'calendar.replay', data: raw, operationId: 'raw_import_1', expectedRevision: 0 }), { ok: true, found: false });
+  assert.equal((await read('account.export')).account_revision, saved.account_revision);
+  await write('account.delete', { confirm: 'DELETE_MY_WORKSPACE' }, saved.account_revision);
+  assert.equal((await lookup()).error, 'account_deleted');
 });
 
 test('fingerprint overrides are limited to matching calendar imports', async (t) => {

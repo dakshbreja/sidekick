@@ -22,9 +22,9 @@ The clean community foundation is implemented locally. It supports separate, ini
 
 ## Verification evidence
 
-The October 12 local gate passed **137 tests**, the privacy scan with an external private-reference denylist, and the Wrangler dry-run build. An independent code review rechecked the retry fixes and isolation boundaries. The synthetic HTTP demo served its assets and empty onboarding successfully and rejected a cross-origin request. Chrome blocked the loopback page with `ERR_BLOCKED_BY_CLIENT`, so rendered-browser interaction and visual QA remain unverified.
+The October 12 local gate passed **140 tests**, the privacy scan with an external private-reference denylist, and the Wrangler dry-run build. An independent code review rechecked the retry fixes and isolation boundaries. The synthetic HTTP demo served its assets and empty onboarding successfully and rejected a cross-origin request. Chrome blocked the loopback page with `ERR_BLOCKED_BY_CLIENT`, so rendered-browser interaction and visual QA remain unverified.
 
-The local Git repository is prepared. Creating and uploading the private GitHub repository is pending the owner's GitHub sign-in; no cloud publication is claimed.
+The local Git repository is prepared. Creating and uploading the private GitHub repository is pending the owner's GitHub sign-in; no cloud publication is claimed. The requested move of development to Codex cloud is prepared in [CLOUD-HANDOFF.md](CLOUD-HANDOFF.md), but no cloud task has been launched.
 
 Synthetic tests exercise two independently signed identities with the same resource IDs, distinct material and learning records, guessed IDs, hostile tenant selectors, forged tokens, stale account screens and cross-origin writes. They exercise exact receipt replay, revision conflicts and competing writes in the real local Worker/SQLite runtime.
 

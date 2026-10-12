@@ -51,6 +51,14 @@ function siteUrl(value) {
   return url.href;
 }
 export const WRITES = new Set(['profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'account.delete']);
+// Used by both the pre-parse replay lookup and the final calendar save. No
+// time-dependent parsing belongs here: exact original bytes establish identity.
+export function validateCalendarFingerprint(data) {
+  object(data, ['id', 'course_id', 'source_id', 'ics']);
+  const ics = string(data.ics, 250000, { multiline: true });
+  if (new TextEncoder().encode(ics).byteLength > 250000) fail('calendar_too_large', 413);
+  return { id: id(data.id), course_id: courseId(data.course_id, true), source_id: id(data.source_id), ics };
+}
 export function validateWrite(op, data) {
   switch (op) {
     case 'profile.put': {

@@ -60,6 +60,11 @@ export default {
       if(material && request.method==='GET') {queryData(url,[]);return respond(await dispatch('materials.get',{id:material[1]}));}
       if(path==='/api/calendar/import' && request.method==='POST') {
         const packet=writePacket(await readJSON(request));
+        // Match the full original request before parsing against today's window.
+        // A valid old import may exceed today's event limit as time advances.
+        const replay=await dispatch('calendar.replay',packet.data,{operationId:packet.operationId,expectedRevision:packet.expectedRevision});
+        if(!replay.ok)return respond(replay);
+        if(replay.found)return respond(replay.result);
         const profile=await dispatch('profile.get');if(!profile.ok)return respond(profile);
         const data=calendarImport(packet.data,{timezone:profile.record?.timezone||'UTC'});
         return respond(await dispatch('calendar.put',data,{operationId:packet.operationId,expectedRevision:packet.expectedRevision,fingerprintData:packet.data}));
