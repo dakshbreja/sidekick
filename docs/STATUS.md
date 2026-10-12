@@ -115,7 +115,7 @@ Owner-provided screenshots show a private personal School Bridge Community plugi
 
 The onboarding response referred to a nonexistent “Manual entry” source. Draft package **0.1.1** now names the actual source choices and separates manual material text from calendar file import. The already-created host plugin has not been updated by this session; that requires its supported creator/update flow.
 
-The owner reports being signed in to Cloudflare. This execution environment still has no Cloudflare provider connection or secrets. The hostname, Access application, dedicated settings and test-account policy remain pending. `npm run check:signin` correctly reports the three absent setting names and makes no network requests. It validates format only and never marks identity, policy, hostname or revocation as verified.
+The owner reports being signed in to Cloudflare and owning no custom domain. A built-in Worker address protected with scoped Access is the documented private-test alternative; no purchase is required for that path. This execution environment still has no Cloudflare provider connection or secrets. The actual address, Access application, dedicated settings and test-account policy remain pending. `npm run check:signin` correctly reports the three absent setting names and makes no network requests. It validates format only and never marks identity, policy, hostname or revocation as verified.
 
 The updated gate passed **167 tests**, privacy scanning, plugin scope audit and Wrangler dry-run. Three added preflight tests cover missing names, safe invalid-configuration handling and valid synthetic format without network access or value disclosure. No deployment, provider permission, real sign-in or school authorization was performed.
 
