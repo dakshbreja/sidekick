@@ -101,6 +101,14 @@ The synthetic gate passed **162 tests**, the repository privacy scanner, the new
 
 The sign-in preparation parent independently passed [GitHub Actions run 38308979915](https://github.com/dakshbreja/school-bridge-community/actions/runs/38308979915), including rendered synthetic browser QA. The plugin preparation is a new stacked draft with separate CI results to verify.
 
+## Private plugin tryout package
+
+The owner reports that plugin creation/migration options are visible in ChatGPT. Actual ZIP upload availability, successful installation and model behavior have not yet been verified. [PLUGIN-TRYOUT.md](PLUGIN-TRYOUT.md) explains the private download/upload path, seven short acceptance prompts and an effort/quality/time comparison without collecting student data.
+
+`npm run package:plugin -- --output <external path>` now builds the reviewed four-file instruction package after auditing it. It refuses outputs inside the repository, including symlinked paths, uses a unique temporary file and produces a stable ZIP/checksum. The gate passed **164 tests**, privacy scan, package scope audit and dry-run. Two added archive tests check exact file contents/reproducibility and output confinement. The archive was opened successfully and contained only the manifest, copyright and two skills; this is archive verification, not an OpenAI-host test.
+
+CI now retains `school-bridge-plugin-test-package` privately for seven days alongside the separate synthetic website evidence. It does not install, submit, publish or authorize the package. The owner can download the artifact, extract the inner plugin ZIP and try the supported private upload when available. Host acceptance and efficiency benchmarks remain pending.
+
 ## Next milestone
 
 Configure a separately protected deployment, connect one real source through a supported per-student authorization flow, and prove that two consenting students can onboard independently without source edits or shared credentials. Complete the [pilot release gates](ARCHITECTURE.md#pilot-release-gates) before admitting real students; expand automatic collection and teaching after that evidence exists.

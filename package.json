@@ -15,6 +15,7 @@
     "test:browser": "node scripts/browser-check.mjs",
     "check:privacy": "node scripts/privacy-scan.mjs",
     "check:plugin": "node scripts/plugin-audit.mjs",
+    "package:plugin": "python3 scripts/package-plugin.py",
     "types": "wrangler types",
     "build": "wrangler deploy --dry-run --outdir dist",
     "check": "npm run check:privacy && npm run check:plugin && npm test && npm run build",
