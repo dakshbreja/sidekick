@@ -5,6 +5,7 @@ import { base64url } from 'jose';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { createWriteQueue } from '../src/write-intent.js';
 import { createRuntime } from './runtime-fixture.mjs';
 import { GOOGLE_CALENDAR_SCOPES } from '../src/google-calendar.js';
 
@@ -107,12 +108,35 @@ test('real authenticated discovery enables receipt-verified selection and surviv
   const body = { id: 'google_a', connection_generation: 1, calendar_ids: ['example-calendar'], expected_revision: 0, operation_id: 'synthetic_selection_1' };
   const save = () => f.request('/api/google/selection', { method: 'POST', headers: f.headers, body });
   assert.equal((await save()).status, 409);
-  await f.list(); const saved = await (await save()).json(); assert.equal(saved.ok, true); assert.equal(saved.receipt.operation, 'google_selection.put');
+  await f.list(); assert.equal((await save()).status, 409); body.operation_id = 'synthetic_selection_2'; const saved = await (await save()).json(); assert.equal(saved.ok, true); assert.equal(saved.receipt.operation, 'google_selection.put');
   await f.restart();
-  const receipt = await (await f.request('/api/receipts/synthetic_selection_1')).json(); assert.deepEqual(receipt.receipt, saved.receipt);
+  const receipt = await (await f.request('/api/receipts/synthetic_selection_2')).json(); assert.deepEqual(receipt.receipt, saved.receipt);
   assert.equal((await (await save()).json()).replayed, true);
   const selection = await (await f.request('/api/google/selection?connection_id=google_a')).json(); assert.equal(selection.active, true); assert.equal(selection.record.calendars[0].summary, 'Synthetic calendar'); assert.equal(selection.collection_status, 'not_synced');
   assert.equal((await f.request('/api/google/selection?connection_id=google_a', { student: 'b' })).status, 404);
   assert.equal((await f.request('/api/google/selection', { student: 'b', method: 'POST', headers: f.headers, body })).status, 403);
   assert.equal((await f.request('/api/google/selection', { method: 'POST', headers: { ...f.headers, Origin: 'https://foreign.example' }, body })).status, 403);
+});
+
+
+test('real disconnected selection resolves an unsent browser packet through a durable rejection across restart', async t => {
+  const f = await setup(t, { persistent: true }); await f.list();
+  const owner = f.headers['X-Workspace-Id'], values = new Map();
+  const storage = { getItem: key => values.get(key) || null, setItem: (key,value) => values.set(key,value), removeItem: key => values.delete(key) };
+  const queue = () => createWriteQueue({storage,owner});
+  const packet = { id:'google_a',connection_generation:1,calendar_ids:['example-calendar'],expected_revision:0,operation_id:'synthetic_lost_selection' };
+  const input = {owner,path:'/api/google/selection',method:'POST',data:{id:packet.id,connection_generation:1,calendar_ids:packet.calendar_ids}};
+  const api = async (path,options) => {const response=await f.request(path,options);const body=await response.json();if(!body.ok)throw Object.assign(new Error(body.error),{code:body.error,status:response.status});return body;};
+  const receipt = operation => api('/api/receipts/'+operation);
+  await assert.rejects(queue().run('selection',input,async()=>packet,async()=>{throw new Error('Synthetic request lost before delivery');},receipt));
+  await api('/api/google/disconnect',{method:'POST',headers:f.headers,body:{connection_id:'google_a',expected_revision:(await f.status()).revision}});
+  await f.restart();let sends=0;
+  // Lose the rejection reply too: the outbox must still be present.
+  await assert.rejects(queue().reconcile(async(route,p)=>{sends++;await f.request(route.path,{method:route.method,headers:f.headers,body:p});throw new Error('Synthetic rejection response lost');},receipt));
+  assert.equal(queue().count(),1);await f.restart();
+  const resolved=await queue().reconcile(()=>assert.fail('Terminal receipt must avoid another write'),receipt);
+  assert.deepEqual(resolved,{deleted:false,rejected:1});assert.equal(sends,1);assert.equal(values.size,0);
+  assert.equal((await api('/api/google/selection?connection_id=google_a')).record,null);
+  assert.equal((await f.request('/api/receipts/'+packet.operation_id,{student:'b'})).status,404);
+  const late=await f.request('/api/google/selection',{method:'POST',headers:f.headers,body:packet});assert.equal(late.status,409);assert.equal((await late.json()).receipt.outcome,'rejected');
 });

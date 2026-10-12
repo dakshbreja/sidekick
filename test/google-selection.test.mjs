@@ -90,3 +90,43 @@ test('selection and receipt rollback together; exports include choices but exclu
   const exported = await f.read('account.export'); assert.deepEqual(exported.data.google_selection[0].calendar_ids, ['calendar_a']);
   assert.equal(JSON.stringify(exported).includes('unselected_b'), false); assert.equal(JSON.stringify(exported).includes('ciphertext'), false);
 });
+
+test('rejected selection has a terminal receipt and cannot revive after fresh discovery', async t => {
+  const f = await setup(t); const before = (await f.read('account.export')).account_revision;
+  const rejected = await f.selection(['calendar_a'], 0, 'synthetic_rejected_1');
+  assert.equal(rejected.error, 'calendar_choice_not_verified'); assert.equal(rejected.receipt.outcome, 'rejected');
+  assert.equal(rejected.receipt.expected_revision, 0); assert.equal(rejected.receipt.revision, undefined);
+  assert.equal((await f.read('account.export')).account_revision, before + 1);
+  assert.equal((await f.read('google_selection.get', { id: 'google_a' })).revision, 0);
+  f.cache([choice('calendar_a')]);
+  assert.deepEqual(await f.selection(['calendar_a'], 0, 'synthetic_rejected_1'), { ...rejected, replayed: true });
+  assert.equal((await f.selection([], 0, 'synthetic_rejected_1')).error, 'operation_id_conflict');
+  assert.equal((await f.selection(['calendar_a'], 0, 'synthetic_corrected_1')).ok, true);
+  const concurrent = await Promise.all(Array.from({ length: 8 }, () => f.selection(['calendar_a'], 0, 'synthetic_rejected_1')));
+  assert.ok(concurrent.every(result => result.receipt.request_hash === rejected.receipt.request_hash && result.receipt.outcome === 'rejected'));
+  assert.equal((await f.read('google_selection.get', { id: 'google_a' })).revision, 1);
+});
+
+test('rejection receipt and account revision rollback atomically on storage failure', async t => {
+  let failing = false;
+  const f = await setup(t, { beforeExec: query => { if (failing && query.startsWith('UPDATE workspace_meta SET account_revision')) throw new Error('synthetic failure after receipt insert'); } });
+  const before = (await f.read('account.export')).account_revision; failing = true;
+  assert.equal((await f.selection(['calendar_a'], 0, 'synthetic_rejected_1')).error, 'storage_unavailable');
+  assert.equal((await f.read('receipt.get', { operation_id: 'synthetic_rejected_1' })).error, 'receipt_not_found');
+  assert.equal((await f.read('account.export')).account_revision, before);
+  failing = false; assert.equal((await f.selection(['calendar_a'], 0, 'synthetic_rejected_1')).receipt.outcome, 'rejected');
+});
+
+test('disconnect racing an initial selection fences it; concurrent corrected saves publish only once', async t => {
+  const f = await setup(t); f.cache([choice('calendar_a')]);
+  // dispatch yields for request hashing before entering the synchronous commit.
+  const pending = f.selection(['calendar_a'], 0, 'synthetic_racing_1');
+  f.state.disconnect(A, { connectionId:'google_a', expectedRevision:f.state.status(A,'google_a').revision });
+  const rejected = await pending; assert.equal(rejected.receipt.outcome,'rejected'); assert.equal(rejected.error,'google_access_changed');
+  await f.authorize(); f.cache([choice('calendar_a')]);
+  const results = await Promise.all([f.selection(['calendar_a'],0,'synthetic_corrected_1'),f.selection(['calendar_a'],0,'synthetic_corrected_1')]);
+  assert.ok(results.every(result=>result.ok)); assert.deepEqual(results[0].receipt,results[1].receipt);
+  assert.equal(results.filter(result=>result.replayed).length,1);assert.equal((await f.read('google_selection.get',{id:'google_a'})).revision,1);
+  const old = await f.write('google_selection.put',{id:'google_a',connection_generation:1,calendar_ids:['calendar_a']},0,'synthetic_racing_1');
+  assert.deepEqual(old,{...rejected,replayed:true});
+});

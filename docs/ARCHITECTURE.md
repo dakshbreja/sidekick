@@ -20,7 +20,7 @@ The Worker verifies the `Cf-Access-Jwt-Assertion` signature, expected issuer, ap
 
 Caller-provided tenant selectors are rejected. Forwarded email, arbitrary identity headers and resource IDs cannot select another student's storage. The browser's optional `X-Workspace-Id` header applies to reads as well as writes and is an equality guard against a stale account screen; it does not select or authenticate an account. Unknown fields and filters fail validation. Cross-origin browser mutations are rejected.
 
-Static application assets are separate from protected `/api/*` data. The health route reports only that HTTP handling is available. A future Access deployment must configure admission and revocation deliberately; the repository does not establish university membership or grant access by itself.
+Static application assets are separate from protected `/api/*` data. The health route reports only that HTTP handling is available. The private test deployment restricts admission to two operator-controlled accounts; wider admission and revocation still require verification; the repository does not establish university membership or grant access by itself.
 
 ## Components
 
@@ -31,15 +31,19 @@ Static application assets are separate from protected `/api/*` data. The health 
 | `src/student-object.js` | SQLite Durable Object and authenticated-service RPC boundary. |
 | `src/store.js`, `src/validation.js` | Scoped records, ownership, immutable identities, revisions, quotas, atomic receipts, export and deletion. |
 | `src/calendar-import.js`, `src/core/ics.js` | Parse a supplied calendar file into a bounded window with explicit warnings. No remote feed fetch. |
-| `src/ui.js`, `src/write-intent.js` | Onboarding and manual-data interface; save intents and receipt readback. |
+| `src/ui.js`, `src/write-intent.js` | Onboarding, imports and opt-in calendar controls; persistent save intents and receipt resolution. |
+| `src/google-calendar.js`, `src/google-oauth.js`, `src/google-routes.js` | Bounded provider transport and authenticated, opt-in consent/discovery/selection routes. |
+| `src/google-connection-state.js`, `src/google-access.js`, `src/credential-envelope.js` | Private authorization state, credential encryption, durable refresh leases/backoff and generation checks. |
 
-There are no provider-token tables, collection queues, remote source adapters or AI-provider clients in this milestone.
+Encrypted Google credentials and bounded discovery metadata use private tables in the student database, outside normal records and exports. Calendar selections are normal exportable records. These connector components remain disabled on the private deployment; scheduled event collection and AI-provider clients are unfinished. See [GOOGLE-CALENDAR.md](GOOGLE-CALENDAR.md).
 
 ## Resource and save contract
 
 Courses are entered per student, with independent code, section and term identifiers. Referenced courses must exist in that student's store. Course identity cannot be silently reassigned to another section or term. Material, progress and calendar identities likewise cannot be moved to another course or source through an update.
 
-Every write supplies an `operation_id` and `expected_revision`. Creation uses revision `0`. Within one synchronous SQLite transaction, the store checks the current revision, writes the record, saves its receipt and increments the account revision. A conflicting revision or reused operation ID with different content fails. An exact retry returns the original saved record and receipt without applying a second write. Lost acknowledgements are resolved with the original operation and receipt readback.
+Every resource save supplies an `operation_id` and `expected_revision`. Creation uses revision `0`. Within one synchronous SQLite transaction, the store checks the current revision, writes the record, saves its receipt and increments the account revision. A conflicting revision or reused operation ID with different content fails. An exact retry returns the original saved record and receipt without applying a second write. Lost acknowledgements are resolved with the original operation and receipt readback.
+
+A validated Google calendar-selection save can instead receive a terminal rejection receipt when its authorization, resource revision or recently verified choices no longer match. This reserves the original operation ID/hash and advances only the account revision; it does not change the selection record. Exact retries retain that rejected outcome. Reconciliation verifies the complete normalized request hash plus the receipt identity and allowed rejection reason before clearing the pending packet, and tells the student it was not saved. A prior successful acknowledgement cannot be replaced by a rejection. Other transient or ambiguous failures retain existing recovery behavior.
 
 The UI loads a complete owner-guarded snapshot before updating its workspace; only the newest refresh can render. Asynchronous calendar preparation preserves the owner captured at submission, and exports check that owner again before downloading. Confirmed deletion invalidates older refreshes.
 
@@ -92,7 +96,7 @@ Back up and protect `TENANT_ID_KEY` together with the account-addressing configu
 
 ## Plugin client direction
 
-The community project now has an instruction-only plugin draft with manual onboarding and save-recovery skills. It is not installed or connected and has no live tools, hooks, model integration or student reference files. This is freshly written community code; no personal GPTs or knowledge were imported.
+The community project now has an instruction-only plugin draft with manual onboarding and save-recovery skills. It has no live backend tools, hooks, model integration or student reference files; installation alone does not connect a workspace. This is freshly written community code; no personal GPTs or knowledge were imported.
 
 A later authenticated plugin/MCP client must reuse the backend's verified identity, ownership, revisions, receipts and deletion semantics rather than maintaining another student store. Browser Access headers cannot be assumed in an MCP session; delegated authorization and revocation need a separately reviewed implementation and adversarial tests. Plugin installation is not provider authorization. Source-backed teaching and automatic source work remain subject to the gates below. [Plugin plan and measured-efficiency criteria](PLUGIN-PLAN.md).
 
@@ -108,4 +112,4 @@ A later authenticated plugin/MCP client must reuse the backend's verified identi
 | Connector reliability | Add durable background jobs with source-specific health, freshness targets, bounded retries and visible failures. Exercise revoked sessions, interrupted imports and duplicate delivery. |
 | Teaching and product validation | Integrate an actual model and permitted source retrieval, then test evidence grounding, understanding checks, saves and fresh-client resume. Run a small observed student pilot before widening access. |
 
-The order is deliberate: finish independent sign-in and one supported source path, validate two real consenting accounts, then build out automation and teaching. There is no cloud deployment, live Google/eLC authorization, AI teaching or unattended collection in the current foundation.
+The order is deliberate: finish independent sign-in and one supported source path, validate two real consenting accounts, then build out automation and teaching. Private hosting and normal two-account saves/reloads/exports have been verified. Live Google/eLC authorization, AI teaching, unattended collection and the remaining release gates are unfinished.

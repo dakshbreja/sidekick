@@ -2,6 +2,7 @@
 import {chromium} from 'playwright-core';
 import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {mkdtemp, mkdir, realpath, rm, writeFile, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join, resolve, relative, isAbsolute, sep} from 'node:path';
@@ -40,7 +41,21 @@ try{
  await page.route('**/api/onboarding',async route=>{if(route.request().method()!=='GET')return route.continue();const response=await route.fetch();const body=await response.json();body.capabilities.google_calendar_oauth=true;body.capabilities.google_calendar_selection=true;await route.fulfill({response,json:body});});
  await page.route('**/api/google/status?*',route=>route.fulfill({json:{ok:true,connection:googleState}}));
  await page.route('**/api/google/selection?*',route=>route.fulfill({json:{...googleSelection,active:Boolean(googleSelection.record && googleState.authorized)}}));
- await page.route('**/api/google/selection',async route=>{const packet=route.request().postDataJSON();selectionWrites++;assert.equal(packet.connection_generation,1);assert.equal(packet.expected_revision,googleSelection.revision);const revision=googleSelection.revision+1;const receipt={operation_id:packet.operation_id,operation:'google_selection.put',resource_id:source,revision,request_hash:'synthetic-selection-hash-'+revision};selectionReceipts.set(packet.operation_id,receipt);googleSelection={ok:true,active:true,revision,record:{calendar_ids:packet.calendar_ids,calendars:packet.calendar_ids.map(id=>({id,summary:'<script>Synthetic literal calendar</script>'}))}};if(selectionWrites===1)return route.abort('failed');return route.fulfill({json:{ok:true,receipt}});});
+ let interruptedSelection;
+ await page.route('**/api/google/selection',async route=>{
+  const packet=route.request().postDataJSON();selectionWrites++;assert.equal(packet.connection_generation,1);assert.equal(packet.expected_revision,googleSelection.revision);
+  if(selectionWrites===3){interruptedSelection=packet;return route.abort('failed');}
+  if(!googleState.authorized){
+   assert.deepEqual(packet,interruptedSelection);
+   const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+canonical(value[key])).join(',')+'}':JSON.stringify(value);
+   const request={op:'google_selection.put',data:{id:packet.id,connection_generation:packet.connection_generation,calendar_ids:[...packet.calendar_ids].sort()},expectedRevision:packet.expected_revision};
+   const receipt={operation_id:packet.operation_id,operation:'google_selection.put',resource_id:source,expected_revision:packet.expected_revision,request_hash:createHash('sha256').update(canonical(request)).digest('hex'),outcome:'rejected',reason:'google_access_changed'};
+   selectionReceipts.set(packet.operation_id,receipt);return route.fulfill({status:409,json:{ok:false,error:'google_access_changed',receipt}});
+  }
+  const revision=googleSelection.revision+1;const receipt={operation_id:packet.operation_id,operation:'google_selection.put',resource_id:source,revision,request_hash:'synthetic-selection-hash-'+revision};selectionReceipts.set(packet.operation_id,receipt);
+  googleSelection={ok:true,active:true,revision,record:{calendar_ids:packet.calendar_ids,calendars:packet.calendar_ids.map(id=>({id,summary:'<script>Synthetic literal calendar</script>'}))}};
+  if(selectionWrites===1)return route.abort('failed');return route.fulfill({json:{ok:true,receipt}});
+ });
  await page.route('**/api/receipts/*',route=>{const receipt=selectionReceipts.get(new URL(route.request().url()).pathname.split('/').at(-1));return receipt?route.fulfill({json:{ok:true,receipt}}):route.continue();});
  await page.route('**/api/google/prepare',route=>route.fulfill({json:{ok:true}}));
  await page.route('**/api/google/begin',route=>{consentPacket=route.request().postDataJSON();return route.fulfill({json:{ok:true,authorization_url:'https://accounts.google.com/o/oauth2/v2/auth?state=example-synthetic-state'}});});
@@ -78,10 +93,17 @@ try{
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar selection saved and verified'));
  assert.deepEqual(googleSelection.record.calendar_ids,[]);assert.equal(selectionWrites,2);
  passed.push('synthetic calendar selection: explicit choice, reload, lost-response receipt recovery without resending, draft-only clear and confirmed empty save');
+ await page.getByRole('button',{name:'Save calendar selection',exact:true}).click();
+ await page.waitForFunction(()=>!document.querySelector('#recovery').hidden);assert.equal(selectionWrites,3);
  await page.unroute('**/api/google/calendars?*');
  await page.getByRole('button',{name:'Remove saved Google access',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved Google access removed locally'));
  assert.equal(disconnectPacket.expected_revision,3);assert.match(await page.locator('#connections').innerText(),/Saved access removed/);
+ await page.reload();await ready();await reconcile();assert.equal(selectionWrites,4);assert.equal((await stored()).length,0);
+ assert.match(await page.locator('#notice').innerText(),/A pending calendar selection was not saved/);
+ assert.equal(googleSelection.revision,2);
+ await page.screenshot({path:join(evidence,'google-rejected-selection.png'),fullPage:true});
+ passed.push('interrupted selection followed by disconnect: exact replay, terminal rejection receipt and explicit not-applied message');
  for(const pattern of ['**/api/receipts/*','**/api/google/selection','**/api/google/selection?*','**/api/onboarding','**/api/google/status?*','**/api/google/prepare','**/api/google/begin','**/api/google/disconnect','https://accounts.google.com/**'])await page.unroute(pattern);
  await page.reload();await ready();
  passed.push('synthetic consent UI: explicit permission, bounded Google destination, unsynced status, paged literal calendar names and local-disconnect wording');

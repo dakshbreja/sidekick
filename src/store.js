@@ -211,17 +211,29 @@ export class StudentStore {
     }
     if (message.op === 'account.delete') return this.deleteAccount(meta, message, requestHash);
     const old = this.getRecord(input.kind, input.id);
-    if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
-    this.requireCourse(input.value.course_id);
     if (input.kind === 'google_selection') {
       const selected = input.value;
-      if (this.getRecord('connections', input.id)?.provider !== 'google_calendar' || !this.activeGoogleConnection(input.id, selected.connection_generation)) fail('google_access_changed', 409);
+      let reason = message.expectedRevision !== (old?.revision ?? 0) ? 'revision_conflict' : null;
+      if (!reason && (this.getRecord('connections', input.id)?.provider !== 'google_calendar' || !this.activeGoogleConnection(input.id, selected.connection_generation))) reason = 'google_access_changed';
       for (const calendarId of selected.calendar_ids) {
+        if (reason) break;
         const choice = this.row('SELECT generation, observed_at FROM google_choices WHERE connection_id = ? AND calendar_id = ?', input.id, calendarId);
         const retained = old?.connection_generation === selected.connection_generation && old.calendar_ids.includes(calendarId);
-        if (!retained && (!choice || choice.generation !== selected.connection_generation || choice.observed_at <= Date.parse(this.clock()) - 3600000)) fail('calendar_choice_not_verified', 409);
+        if (!retained && (!choice || choice.generation !== selected.connection_generation || choice.observed_at <= Date.parse(this.clock()) - 3600000)) reason = 'calendar_choice_not_verified';
+      }
+      // Persist a terminal outcome in the same transaction used by successful
+      // saves. A later retry cannot revive an obsolete packet after reconnect.
+      if (reason) {
+        const accountRevision = meta.account_revision + 1;
+        const receipt = { operation_id: message.operationId, operation: message.op, resource_id: input.id, expected_revision: message.expectedRevision, account_revision: accountRevision, resolved_at: this.clock(), request_hash: requestHash, outcome: 'rejected', reason };
+        const result = { ok: false, error: reason, status: 409, receipt };
+        this.saveReceipt(message.operationId, requestHash, result);
+        this.sql.exec('UPDATE workspace_meta SET account_revision = ? WHERE singleton = 1', accountRevision);
+        return result;
       }
     }
+    if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
+    this.requireCourse(input.value.course_id);
     if (input.kind === 'calendar') {
       if (!this.getRecord('connections', input.value.source_id)) fail('connection_not_found', 404);
       const calendars = this.sql.exec('SELECT id, body FROM records WHERE kind = ?', 'calendar').toArray();

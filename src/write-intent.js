@@ -31,11 +31,18 @@ export function createWriteQueue({storage, owner} = {}) {
     pending.delete(key);
     try { persist(); } catch (error) { pending.set(key,intent); throw error; }
   };
-  const matches = (receipt, packet, ack, route) => receipt?.operation_id === packet.operation_id && Boolean(receipt.request_hash) &&
+  const matches = (receipt, packet, ack, route) => receipt?.outcome === undefined && receipt?.operation_id === packet.operation_id && Boolean(receipt.request_hash) &&
     (!ack || receipt.request_hash === ack.request_hash && receipt.revision === ack.revision) &&
     (!durable || receipt.revision === packet.expected_revision + 1 && receipt.operation === operations[route?.path] &&
       receipt.resource_id === (packet.id || (route?.path === '/api/account' ? 'account' : 'profile')) &&
       Boolean(receipt.deleted) === (route?.path === '/api/account'));
+  const canonical = value => Array.isArray(value) ? '[' + value.map(canonical).join(',') + ']' : value && typeof value === 'object' ? '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}' : JSON.stringify(value);
+  const selectionReasons = ['google_access_changed','calendar_choice_not_verified','revision_conflict'];
+  const rejectedSelection = async (receipt, packet, ack, route) => {
+    if (ack || route?.path !== '/api/google/selection' || route.method !== 'POST' || receipt?.outcome !== 'rejected' || !selectionReasons.includes(receipt.reason) || receipt.operation_id !== packet.operation_id || receipt.operation !== 'google_selection.put' || receipt.resource_id !== packet.id || receipt.expected_revision !== packet.expected_revision || receipt.revision !== undefined || receipt.deleted || !Array.isArray(packet.calendar_ids)) return false;
+    const request = {op:'google_selection.put',data:{id:packet.id,connection_generation:packet.connection_generation,calendar_ids:[...packet.calendar_ids].sort()},expectedRevision:packet.expected_revision};
+    return receipt.request_hash === await digest(canonical(request));
+  };
   const definiteRejection = (error) => Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 &&
     ![408, 425, 429].includes(error.status) &&
     ![error.code, error.error, error.message].includes('operation_id_conflict');
@@ -48,6 +55,7 @@ export function createWriteQueue({storage, owner} = {}) {
     // Receipt lookup always precedes any explicit replay after reload/reconnect.
     // A missing receipt permits only the original packet, never a new operation.
     async reconcile(send, readReceipt) {
+      let rejected = 0;
       for (const [key,intent] of [...pending].sort(([a],[b]) => (b === 'delete') - (a === 'delete'))) {
         if (intent.flight) throw new Error('A save is still running.');
         const packet = await intent.packetPromise;
@@ -55,16 +63,27 @@ export function createWriteQueue({storage, owner} = {}) {
         try { readback = await readReceipt(packet.operation_id); }
         catch (error) {
           if (error.code !== 'receipt_not_found' || error.status !== 404 || intent.ack) throw error;
-          const result = await send(intent.route,packet);
-          if (!result?.ok || !matches(result.receipt,packet,null,intent.route)) throw new Error('Save acknowledgement is unconfirmed.');
-          intent.ack = {operation_id:result.receipt.operation_id,request_hash:result.receipt.request_hash,revision:result.receipt.revision}; persist();
-          readback = await readReceipt(packet.operation_id);
+          let result;
+          try { result = await send(intent.route,packet); }
+          catch (replayError) {
+            if (intent.route?.path !== '/api/google/selection' || replayError.status !== 409 || !selectionReasons.includes(replayError.code)) throw replayError;
+            // The error alone is insufficient. A durable, exact-request rejection
+            // receipt fences all late copies of this packet before local cleanup.
+            readback = await readReceipt(packet.operation_id);
+            if (!readback?.ok || !await rejectedSelection(readback.receipt,packet,intent.ack,intent.route)) throw new Error('Save verification is unconfirmed.');
+          }
+          if (result) {
+            if (!result.ok || !matches(result.receipt,packet,null,intent.route)) throw new Error('Save acknowledgement is unconfirmed.');
+            intent.ack = {operation_id:result.receipt.operation_id,request_hash:result.receipt.request_hash,revision:result.receipt.revision}; persist();
+            readback = await readReceipt(packet.operation_id);
+          }
         }
+        if (readback?.ok && await rejectedSelection(readback.receipt,packet,intent.ack,intent.route)) { remove(key,intent); rejected++; continue; }
         if (!readback?.ok || !matches(readback.receipt,packet,intent.ack,intent.route)) throw new Error('Save verification is unconfirmed.');
         if (readback.receipt.deleted) { this.clear(); return {deleted:true}; }
         remove(key,intent);
       }
-      return {deleted:false};
+      return {deleted:false,...(rejected ? {rejected} : {})};
     },
     async run(key, input, buildPacket, send, readReceipt) {
       const logical = JSON.stringify(input);
