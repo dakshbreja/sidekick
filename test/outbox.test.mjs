@@ -4,7 +4,7 @@ import {createWriteQueue} from '../src/write-intent.js';
 const owner='synthetic-a';
 const input={owner,path:'/api/courses',method:'PUT',data:{title:'Synthetic course'}};
 const packet={operation_id:'synthetic-operation',expected_revision:0,id:'synthetic-course',title:'Synthetic course'};
-const receipt={operation_id:packet.operation_id,request_hash:'synthetic-hash',revision:1};
+const receipt={operation_id:packet.operation_id,request_hash:'synthetic-hash',revision:1,operation:'courses.put',resource_id:packet.id};
 const saved={ok:true,receipt};
 const lost=async()=>{throw new Error('Response lost');};
 const missing=()=>Object.assign(new Error('Missing'),{code:'receipt_not_found',status:404});
@@ -48,7 +48,7 @@ test('lost deletion response recovers its receipt first and clears this account 
  const b=createWriteQueue({storage:f.storage,owner:'synthetic-b'});await assert.rejects(b.run('course',{...input,owner:'synthetic-b'},async()=>packet,lost,async()=>saved));
  const deletion={operation_id:'synthetic-deletion',expected_revision:42,confirm:'DELETE_MY_WORKSPACE'};
  await assert.rejects(f.queue().run('delete',{owner,path:'/api/account',method:'DELETE',confirm:deletion.confirm},async()=>deletion,lost,async()=>saved));
- const reads=[];const result=await f.queue().reconcile(()=>assert.fail('No resend after deletion'),async id=>{reads.push(id);return {ok:true,receipt:{...receipt,operation_id:id,deleted:true,revision:43}};});
+ const reads=[];const result=await f.queue().reconcile(()=>assert.fail('No resend after deletion'),async id=>{reads.push(id);return {ok:true,receipt:{...receipt,operation_id:id,operation:'account.delete',resource_id:'account',deleted:true,revision:43}};});
  assert.equal(result.deleted,true);assert.deepEqual(reads,[deletion.operation_id]);assert.equal(f.queue().count(),0);assert.equal(createWriteQueue({storage:f.storage,owner:'synthetic-b'}).count(),1);
 });
 test('storage unavailable fails before network send',async()=>{
@@ -59,4 +59,35 @@ test('outbox retains only pending packet, digest, route and minimal acknowledgem
  const f=fixture();await assert.rejects(f.queue().run('course',input,async()=>packet,async()=>saved,lost));
  const record=JSON.parse([...f.values.values()][0]);assert.deepEqual(Object.keys(record.intents[0]).sort(),['ack','fingerprint','key','packet','route']);
  assert.equal(record.intents[0].fingerprint.length,64);assert.equal(JSON.stringify(record).split('Synthetic course').length-1,1);
+});
+
+test('failed local cleanup retains the original in-memory intent and blocks a new operation',async()=>{
+ const f=fixture();const queue=f.queue();const remove=f.storage.removeItem;
+ f.storage.removeItem=()=>{throw new Error('Cleanup unavailable');};
+ await assert.rejects(queue.run('course',input,async()=>packet,async()=>saved,async()=>saved),/Cleanup unavailable/);
+ assert.equal(queue.count(),1);
+ await assert.rejects(queue.run('course',{...input,data:{title:'Another course'}},()=>assert.fail('No replacement operation'),async()=>saved,async()=>saved),/previous save/);
+ f.storage.removeItem=remove;await queue.reconcile(()=>assert.fail('Receipt already exists'),async()=>saved);assert.equal(f.values.size,0);
+});
+test('failed local clear preserves recovery entries until cleanup succeeds',async()=>{
+ const f=fixture();const queue=f.queue();await assert.rejects(queue.run('course',input,async()=>packet,lost,async()=>saved));
+ const remove=f.storage.removeItem;f.storage.removeItem=()=>{throw new Error('Cleanup unavailable');};
+ assert.throws(()=>queue.clear(),/Cleanup unavailable/);assert.equal(queue.count(),1);
+ f.storage.removeItem=remove;queue.clear();assert.equal(queue.count(),0);assert.equal(f.values.size,0);
+});
+test('receipt recovery rejects wrong resource, operation, revision and deletion flag even without acknowledgement',async()=>{
+ const f=fixture();await assert.rejects(f.queue().run('course',input,async()=>packet,lost,async()=>saved));
+ for(const changed of [{revision:2},{resource_id:'different-course'},{operation:'materials.put'},{deleted:true}]){
+  await assert.rejects(f.queue().reconcile(()=>assert.fail('Do not replay mismatched receipt'),async()=>({ok:true,receipt:{...receipt,...changed}})),/unconfirmed/);
+  assert.equal(f.queue().count(),1);
+ }
+ await f.queue().reconcile(()=>assert.fail('No resend'),async()=>saved);assert.equal(f.values.size,0);
+});
+test('malformed local routes are rejected before any recovery request',async()=>{
+ const f=fixture();await assert.rejects(f.queue().run('course',input,async()=>packet,lost,async()=>saved));
+ const [key,value]=[...f.values][0];const original=JSON.parse(value);
+ for(const route of [undefined,{}, {path:'/api/unknown',method:'PUT'}, {path:'/api/courses',method:'DELETE'}]){
+  const record=structuredClone(original);record.intents[0].route=route;f.values.set(key,JSON.stringify(record));
+  assert.throws(()=>f.queue(),/invalid/);
+ }
 });

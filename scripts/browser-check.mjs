@@ -4,19 +4,19 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mkdtemp, mkdir, realpath, rm, writeFile, readFile} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
-import {join, resolve, relative} from 'node:path';
+import {join, resolve, relative, isAbsolute, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 const repository=fileURLToPath(new URL('../',import.meta.url));
 const evidence=resolve(process.env.BROWSER_EVIDENCE_DIR || await mkdtemp(join(tmpdir(),'school-bridge-browser-evidence-')));
 await mkdir(evidence,{recursive:true});
 const location=relative(await realpath(repository),await realpath(evidence));
-if(!location.startsWith('..'))throw new Error('Browser evidence must be outside the repository.');
+if(!isAbsolute(location) && location!=='..' && !location.startsWith('..'+sep))throw new Error('Browser evidence must be outside the repository.');
 const profile=await mkdtemp(join(tmpdir(),'school-bridge-synthetic-browser-'));
 const port=process.env.DEMO_PORT || '8767';const root=`http://127.0.0.1:${port}`;
 const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port},stdio:['ignore','pipe','pipe'],detached:true});
 let demoLog='';demo.stdout.on('data',b=>demoLog+=b);demo.stderr.on('data',b=>demoLog+=b);
 let context,page;const errors=[];const passed=[];
-const ready=()=>page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready'));
+const ready=()=>page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));
 const settled=()=>page.waitForFunction(()=>![...document.querySelectorAll('form button')].some(b=>b.disabled));
 const snapshot=()=>page.evaluate(async()=>{const data=await (await fetch('/api/account/export')).json();delete data.exported_at;return data;});
 const stored=()=>page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('school-bridge-outbox-v1:')).map(k=>JSON.parse(localStorage.getItem(k))));
@@ -71,9 +71,44 @@ try{
  await page.locator('#course-form button').click();await settled();assert.match(await page.locator('#notice').innerText(),/sign-in changed/);assert.deepEqual(await snapshot(),bSaved);
  await other.goto(root+'/__demo/student/a');await other.close();await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#notice').textContent==='Workspace refreshed.');
  passed.push('stale account tab rejected by server workspace guard');
+ // A delayed A read must not overwrite a newer, fully rendered B refresh.
+ await page.unroute('**/api/materials');
+ await page.evaluate(()=>{const fetchOriginal=window.fetch;window.fetch=async(...args)=>{const response=await fetchOriginal(...args);const read=response.json.bind(response);response.json=async()=>{const data=await read();if(data.qa_delayed_refresh)window.qaOldRefreshConsumed=true;return data;};return response;};});
+ let releaseRead,readHeld;const readGate=new Promise(r=>releaseRead=r);const readStarted=new Promise(r=>readHeld=r);let holdRead=true;
+ await page.route('**/api/materials',async route=>{if(route.request().method()==='GET' && holdRead){holdRead=false;const response=await route.fetch();const data=await response.json();data.qa_delayed_refresh=true;readHeld();await readGate;await route.fulfill({response,json:data});}else await route.continue();});
+ await page.locator('#refresh').click();await readStarted;
+ const switching=await context.newPage();await switching.goto(root+'/__demo/student/b');
+ await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#courses').textContent.includes('Student B only') && document.querySelector('#notice').textContent==='Workspace refreshed.');
+ releaseRead();await page.waitForFunction(()=>window.qaOldRefreshConsumed===true);
+ assert.equal(await page.locator('#material-list .row').count(),0);assert.match(await page.locator('#courses').innerText(),/Student B only/);
+ passed.push('delayed A refresh cannot overwrite newer B screen');
+ await page.unroute('**/api/materials');await switching.goto(root+'/__demo/student/a');await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#welcome').textContent==='Welcome, Synthetic Student A' && document.querySelector('#notice').textContent==='Workspace refreshed.');
+ // Capture calendar identity before every asynchronous file/read preparation step.
+ await page.evaluate(()=>{const text=File.prototype.text;File.prototype.text=async function(){window.qaFileWaiting=true;await new Promise(r=>window.qaReleaseFile=r);return text.call(this);};});
+ await page.locator('#calendar-form [name=course_id]').selectOption(course);await page.locator('#source-select').selectOption(source);
+ await page.locator('#calendar-form [name=ics]').setInputFiles({name:'synthetic.ics',mimeType:'text/calendar',buffer:Buffer.from(ics('Must not reach B'))});
+ const calendarAttempts=[];await page.route('**/api/calendar/import',async route=>{calendarAttempts.push(route.request().postDataJSON());await route.continue();});
+ await page.locator('#calendar-form button').click();await page.waitForFunction(()=>window.qaFileWaiting===true);
+ await switching.goto(root+'/__demo/student/b');await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#courses').textContent.includes('Student B only') && document.querySelector('#notice').textContent==='Workspace refreshed.');
+ await page.evaluate(()=>window.qaReleaseFile());await settled();assert.equal(calendarAttempts.length,0);assert.match(await page.locator('#notice').innerText(),/sign-in changed/);assert.deepEqual(await snapshot(),bSaved);
+ passed.push('identity change during file preparation prevents calendar request and foreign outbox');
+ await page.unroute('**/api/calendar/import');await switching.goto(root+'/__demo/student/a');await switching.close();
+ await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#welcome').textContent==='Welcome, Synthetic Student A' && document.querySelector('#notice').textContent==='Workspace refreshed.');
+
  await page.screenshot({path:join(evidence,'student-a.png'),fullPage:true});
  const exportPromise=page.waitForEvent('download');await page.locator('#export').click();const download=await exportPromise;await download.saveAs(join(evidence,'synthetic-export.json'));const exported=JSON.parse(await readFile(join(evidence,'synthetic-export.json'),'utf8'));assert.equal(exported.data.materials.length,2);
  passed.push('rendered export downloads current workspace');
+ // An export response for A must not download after the current tab refreshes B.
+ let releaseExport,exportHeld;const exportGate=new Promise(r=>releaseExport=r);const exportStarted=new Promise(r=>exportHeld=r);let holdExport=true;const unexpectedDownloads=[];
+ const trackDownload=download=>unexpectedDownloads.push(download);page.on('download',trackDownload);
+ await page.route('**/api/account/export',async route=>{if(holdExport){holdExport=false;const response=await route.fetch();exportHeld();await exportGate;await route.fulfill({response});}else await route.continue();});
+ await page.locator('#export').click();await exportStarted;const exportSwitch=await context.newPage();await exportSwitch.goto(root+'/__demo/student/b');
+ await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#courses').textContent.includes('Student B only') && document.querySelector('#notice').textContent==='Workspace refreshed.');
+ releaseExport();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('sign-in changed'));assert.equal(unexpectedDownloads.length,0);assert.deepEqual(await snapshot(),bSaved);
+ passed.push('delayed A export is not downloaded after B becomes the current workspace');
+ page.off('download',trackDownload);await page.unroute('**/api/account/export');await exportSwitch.goto(root+'/__demo/student/a');await exportSwitch.close();
+ await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#welcome').textContent==='Welcome, Synthetic Student A' && document.querySelector('#notice').textContent==='Workspace refreshed.');
+
  // Delete succeeds server-side, but its response is lost. Restart and recover.
  await page.route('**/api/account',async route=>{if(route.request().method()==='DELETE'){await route.fetch();await route.abort('failed');}else await route.continue();});
  await page.locator('#privacy summary').click();await page.locator('#delete-confirm').fill('DELETE_MY_WORKSPACE');await page.locator('#delete').click();await page.waitForFunction(()=>!document.querySelector('#delete').disabled);assert.equal((await stored()).length,1);

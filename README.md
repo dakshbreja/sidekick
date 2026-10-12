@@ -37,7 +37,7 @@ Open `http://127.0.0.1:8766`. The banner switches between Student A and Student 
 
 Use only synthetic information. The runner is restricted to loopback with host/origin checks; it is separate from the production Worker and must never be exposed as a shared sign-in service. See [STATUS.md](docs/STATUS.md) for verification evidence.
 
-Rendered browser QA is a separate, explicit command; `npm run check` does not run or imply it. Install a Chromium executable in the environment, then run:
+Rendered browser QA is a separate, explicit command; `npm run check` does not run or imply it. GitHub CI runs both commands and retains synthetic browser evidence for seven days. Install a Chromium executable in the environment, then run:
 
 ```sh
 BROWSER_EXECUTABLE=/usr/bin/chromium npm run test:browser
