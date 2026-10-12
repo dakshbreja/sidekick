@@ -93,6 +93,14 @@ The next preparation branch adds [PRIVATE-SIGNIN.md](PRIVATE-SIGNIN.md), a plain
 
 The synthetic gate passed **158 tests**, privacy scanning and Wrangler dry-run. Three added identity tests check issuer separation for the same subject, audience changes that reject mismatched tokens without moving the subject's workspace, and per-request expiry/identity validation when public signing keys are cached. These are implementation contracts; real Access admission, session revocation and the deployed removal deadline remain unverified. Application behavior is unchanged from the reviewed recovery branch. The new preparation PR depends on that still-unmerged branch.
 
+## OpenAI plugin preparation
+
+[PLUGIN-PLAN.md](PLUGIN-PLAN.md) records official OpenAI migration guidance researched on October 12, 2026 and the community-specific rollout. `plugins/school-bridge-community` contains a proprietary instruction-only manifest plus onboarding and save-recovery skills, freshly authored from this repository's contracts. No personal GPT, conversation, student material or credential was imported. No plugin was installed, published or connected.
+
+The synthetic gate passed **162 tests**, the repository privacy scanner, the new instruction-only package audit and Wrangler dry-run. Four added package tests exercise live-tool/hook rejection, onboarding path confinement, unexpected files/symlinks and honest host-verification status. `npm run check` now includes `npm run check:plugin`. These checks establish package scope; they do not establish OpenAI host acceptance, skill selection, model adherence or faster/cheaper operations. Host tests and comparative task/latency/cost measurements remain pending, as do all live-access and teaching gates.
+
+The sign-in preparation parent independently passed [GitHub Actions run 38308979915](https://github.com/dakshbreja/school-bridge-community/actions/runs/38308979915), including rendered synthetic browser QA. The plugin preparation is a new stacked draft with separate CI results to verify.
+
 ## Next milestone
 
 Configure a separately protected deployment, connect one real source through a supported per-student authorization flow, and prove that two consenting students can onboard independently without source edits or shared credentials. Complete the [pilot release gates](ARCHITECTURE.md#pilot-release-gates) before admitting real students; expand automatic collection and teaching after that evidence exists.

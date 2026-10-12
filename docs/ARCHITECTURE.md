@@ -90,6 +90,12 @@ The server can read content. Neither access controls nor pseudonymous IDs make t
 
 Back up and protect `TENANT_ID_KEY` together with the account-addressing configuration. Rotation changes addresses; changing the identity issuer or subject mapping also changes ownership addresses. Either event requires a tested migration. An old signing key from the identity provider is a separate concern and is handled through that provider's public-key verification lifecycle.
 
+## Plugin client direction
+
+The community project now has an instruction-only plugin draft with manual onboarding and save-recovery skills. It is not installed or connected and has no live tools, hooks, model integration or student reference files. This is freshly written community code; no personal GPTs or knowledge were imported.
+
+A later authenticated plugin/MCP client must reuse the backend's verified identity, ownership, revisions, receipts and deletion semantics rather than maintaining another student store. Browser Access headers cannot be assumed in an MCP session; delegated authorization and revocation need a separately reviewed implementation and adversarial tests. Plugin installation is not provider authorization. Source-backed teaching and automatic source work remain subject to the gates below. [Plugin plan and measured-efficiency criteria](PLUGIN-PLAN.md).
+
 ## Pilot release gates
 
 | Gate | Evidence required before real student use |
