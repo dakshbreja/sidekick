@@ -87,6 +87,12 @@ Only synthetic records belong in test fixtures. New runtime stores start empty. 
 
 Deletion removes active records and old save receipts while retaining a minimal tombstone and deletion receipt. Provider point-in-time recovery or backups may retain earlier copies under their own policies. Identity-key rotation requires a migration. See [ARCHITECTURE.md](ARCHITECTURE.md#storage-lifecycle-and-deletion) for the full contract and current limits.
 
+## Private sign-in preparation
+
+The next preparation branch adds [PRIVATE-SIGNIN.md](PRIVATE-SIGNIN.md), a plain-language owner guide, setup decisions and a hosted acceptance checklist. The owner's Cloudflare account readiness is not yet confirmed. No hostname, Access application, provider permission or secret was provisioned by this work.
+
+The synthetic gate passed **158 tests**, privacy scanning and Wrangler dry-run. Three added identity tests check issuer separation for the same subject, audience changes that reject mismatched tokens without moving the subject's workspace, and per-request expiry/identity validation when public signing keys are cached. These are implementation contracts; real Access admission, session revocation and the deployed removal deadline remain unverified. Application behavior is unchanged from the reviewed recovery branch. The new preparation PR depends on that still-unmerged branch.
+
 ## Next milestone
 
 Configure a separately protected deployment, connect one real source through a supported per-student authorization flow, and prove that two consenting students can onboard independently without source edits or shared credentials. Complete the [pilot release gates](ARCHITECTURE.md#pilot-release-gates) before admitting real students; expand automatic collection and teaching after that evidence exists.

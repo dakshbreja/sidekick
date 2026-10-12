@@ -77,6 +77,7 @@ The browser persists only unconfirmed save packets in an account-scoped recovery
 
 ## Developer references
 
+- [Private sign-in: owner preparation and verification](docs/PRIVATE-SIGNIN.md)
 - [Architecture and release gates](docs/ARCHITECTURE.md)
 - [Codex cloud handoff](docs/CLOUD-HANDOFF.md)
 - [Current status and evidence limits](docs/STATUS.md)
