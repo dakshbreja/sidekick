@@ -3,6 +3,7 @@ import {ContractError,fail,object,id,operationId,revision,string} from './valida
 export const TUTOR_MODEL='@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 export const TUTOR_CONSENT='cloudflare-tutor-v1';
 export const TUTOR_LIMITS=Object.freeze({studentDaily:10,globalDaily:12,inputBytes:18000,outputTokens:1000,leaseMs:120000,turns:120,operations:1000});
+export const TUTOR_FORMAT={type:'json_schema',json_schema:{anyOf:[{type:'object',properties:{unavailable:{type:'boolean',const:true}},required:['unavailable'],additionalProperties:false},{type:'object',properties:{lesson:{type:'string',minLength:300,maxLength:3000,description:'An 80–160 word teaching explanation, not a heading. Explain the idea, work through the source example step by step, correct the previous misconception, and cite [S1].'},question:{type:'string',maxLength:600},choices:{type:'array',items:{type:'string',maxLength:300},minItems:4,maxItems:4},correct_index:{type:'integer',minimum:0,maximum:3},source_label:{type:'string'},quote:{type:'string',minLength:20,maxLength:350},explanation:{type:'string',maxLength:1000}},required:['lesson','question','choices','correct_index','source_label','quote','explanation'],additionalProperties:false}]}};
 const size=x=>new TextEncoder().encode(typeof x==='string'?x:JSON.stringify(x)).length;
 export const tutorConfigured=env=>env.TUTOR_ENABLED==='true'&&env.TUTOR_FREE_TIER_CONFIRMED==='true'&&Boolean(env.AI&&env.COLLECTION_BUDGETS);
 export function initializeTutor(store){
@@ -33,6 +34,7 @@ export function validateLesson(raw,sources){
   try{
     object(result,['lesson','question','choices','correct_index','source_label','quote','explanation']);
     for(const [key,max] of [['lesson',3000],['question',600],['quote',350],['explanation',1000]])string(result[key],max,{multiline:true});
+    if(result.lesson.length<300)throw 0;
     if(!Array.isArray(result.choices)||result.choices.length!==4||new Set(result.choices).size!==4)throw 0;
     result.choices.forEach(c=>string(c,300));
     if(!Number.isInteger(result.correct_index)||result.correct_index<0||result.correct_index>3)throw 0;
@@ -128,7 +130,7 @@ export async function runTutor({store,env,tenantId,data}){
     const reservation=await Promise.race([budget.reserveTutor({reservationId}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new ContractError('tutor_budget_unavailable',503)),5000);})]);clearTimeout(timer);
     if(!reservation.allowed)fail('tutor_global_limit',429);
     state.active(tenantId,plan);
-    const output=await Promise.race([env.AI.run(TUTOR_MODEL,{messages:plan.messages,max_tokens:TUTOR_LIMITS.outputTokens,temperature:0.2,response_format:{type:'json_object'}}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new ContractError('tutor_provider_timeout',503)),45000);})]);
+    const output=await Promise.race([env.AI.run(TUTOR_MODEL,{messages:plan.messages,max_tokens:TUTOR_LIMITS.outputTokens,temperature:0.2,response_format:TUTOR_FORMAT}),new Promise((_,reject)=>{timer=setTimeout(()=>reject(new ContractError('tutor_provider_timeout',503)),45000);})]);
     return state.finish(tenantId,plan,validateLesson(output?.response,plan.sources));
   }catch(error){return state.failed(tenantId,packet,error instanceof ContractError?error.code:'tutor_provider_unavailable');}
   finally{clearTimeout(timer);if(budget&&reservationId)try{await budget.releaseTutor({reservationId});}catch{ /* Reservation expires conservatively. */ }}
