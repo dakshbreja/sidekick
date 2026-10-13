@@ -1,10 +1,12 @@
+import {initializeSchoolFeeds,feedRows,publicFeed} from './school-feed-state.js';
+import {dailyDashboard,schoolItems} from './daily-dashboard.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
 import { initializeRevocations } from './google-revocation.js';
 import { initializeGoogleSchedule } from './google-scheduler.js';
 import { initializeGoogleCollection, clearGoogleCollection, reconcileGoogleSelection, exportGoogleSnapshots } from './google-collection-state.js';
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
-const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar', 'google_selection'];
+const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar', 'google_selection', 'assignments'];
 export const STORE_LIMITS = Object.freeze({ recordBytes: 128000, totalRecordBytes: 10000000, totalReceiptBytes: 20000000, receipts: 5000, recordsPerKind: 100, calendars: 20 });
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
 const canonical = (value) => {
@@ -51,6 +53,8 @@ export class StudentStore {
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)');
       initializeRevocations(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)');
+      initializeSchoolFeeds(this);
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -162,6 +166,7 @@ export class StudentStore {
   }
   read(meta, op, data) {
     const common = { ok: true, account_revision: meta.account_revision };
+    if (op === 'daily.get') return {...dailyDashboard(this,{now:Date.parse(this.clock())}),account_revision:meta.account_revision};
     if (op === 'account.export') {
       const exported = this.emptyExport();
       for (const row of this.sql.exec('SELECT kind, body FROM records ORDER BY kind, id').toArray()) {
@@ -170,6 +175,7 @@ export class StudentStore {
         else exported[row.kind].push(record);
       }
       exported.google_calendar_snapshots = exportGoogleSnapshots(this);
+      exported.school_feeds=feedRows(this).map(row=>({...publicFeed(row),snapshot:row.snapshot||null}));
       return { ...common, exported_at: this.clock(), deleted: false, data: exported };
     }
     if (op === 'receipt.get') {
@@ -212,7 +218,7 @@ export class StudentStore {
     });
     return { ...common, records, complete: filtered.length <= limit, next_cursor: filtered.length > limit ? records.at(-1).id : null };
   }
-  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [] }; }
+  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [], assignments: [], school_feeds: [] }; }
   write(meta, message, input, requestHash) {
     const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
     if (saved) {
@@ -244,6 +250,10 @@ export class StudentStore {
     }
     if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
     this.requireCourse(input.value.course_id);
+    if(input.kind==='progress' && input.id.startsWith('daily_')){
+      const item=schoolItems(this).find(item=>item.id===input.value.assignment_id);
+      if(!item || item.category!=='deadline' || input.id!=='daily_'+item.id || item.course_id!==input.value.course_id || item.title!==input.value.title)fail('assignment_changed',409);
+    }
     if (input.kind === 'calendar') {
       if (!this.getRecord('connections', input.value.source_id)) fail('connection_not_found', 404);
       const calendars = this.sql.exec('SELECT id, body FROM records WHERE kind = ?', 'calendar').toArray();
@@ -307,6 +317,7 @@ export class StudentStore {
     clearGoogleCollection(this);
     this.sql.exec('DELETE FROM google_schedule');
     this.sql.exec('DELETE FROM google_revocations');
+    this.sql.exec('DELETE FROM school_feeds');
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;

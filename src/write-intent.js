@@ -4,8 +4,8 @@ export function createWriteQueue({storage, owner} = {}) {
   const storageKey = 'school-bridge-outbox-v1:' + owner;
   const durable = Boolean(storage && owner);
   const digest = async value => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))), b => b.toString(16).padStart(2, '0')).join('');
-  const routes = {'/api/onboarding':'PUT','/api/courses':'PUT','/api/connections':'PUT','/api/materials':'PUT','/api/calendar/import':'POST','/api/google/selection':'POST','/api/account':'DELETE'};
-  const operations = {'/api/onboarding':'profile.put','/api/courses':'courses.put','/api/connections':'connections.put','/api/materials':'materials.put','/api/calendar/import':'calendar.put','/api/google/selection':'google_selection.put','/api/account':'account.delete'};
+  const routes = {'/api/assignments':'PUT','/api/progress':'PUT','/api/onboarding':'PUT','/api/courses':'PUT','/api/connections':'PUT','/api/materials':'PUT','/api/calendar/import':'POST','/api/google/selection':'POST','/api/account':'DELETE'};
+  const operations = {'/api/assignments':'assignments.put','/api/progress':'progress.put','/api/onboarding':'profile.put','/api/courses':'courses.put','/api/connections':'connections.put','/api/materials':'materials.put','/api/calendar/import':'calendar.put','/api/google/selection':'google_selection.put','/api/account':'account.delete'};
   if (durable) {
     const saved = storage.getItem(storageKey);
     if (saved) {

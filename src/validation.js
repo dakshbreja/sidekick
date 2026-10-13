@@ -50,7 +50,7 @@ function siteUrl(value) {
       url.hostname === 'localhost' || !url.hostname.includes('.') || url.port) fail('unsafe_site_url');
   return url.href;
 }
-export const WRITES = new Set(['profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
+export const WRITES = new Set(['assignments.put', 'profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
 // Used by both the pre-parse replay lookup and the final calendar save. No
 // time-dependent parsing belongs here: exact original bytes establish identity.
 export function validateCalendarFingerprint(data) {
@@ -61,6 +61,13 @@ export function validateCalendarFingerprint(data) {
 }
 export function validateWrite(op, data) {
   switch (op) {
+    case 'assignments.put': {
+      object(data,['id','course_id','title','due_at','all_day']);
+      if(typeof data.all_day!=='boolean')fail('invalid_event');
+      if(typeof data.id==='string'&&data.id.startsWith('school_'))fail('reserved_assignment_id');
+      const value={id:id(data.id),course_id:courseId(data.course_id),title:string(data.title,200),due_at:timestamp(data.due_at),all_day:data.all_day};
+      return {kind:'assignments',id:value.id,value};
+    }
     case 'profile.put': {
       object(data, ['display_name', 'timezone', 'consent_version', 'institution', 'school_email', 'study_goals', 'learning_preferences']);
       const value = { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) };
@@ -168,7 +175,7 @@ export function validateWrite(op, data) {
 }
 export function validateRead(op, data) {
   const fields = {
-    'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
+    'daily.get': [], 'assignments.list':['course_id','limit','cursor'], 'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
     'materials.list': ['course_id', 'limit', 'cursor'], 'materials.get': ['id'],
     'progress.list': ['course_id', 'status', 'limit', 'cursor'],
     'learning.get': ['course_id', 'session_id'],

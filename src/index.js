@@ -1,3 +1,4 @@
+import {schoolFeedsEnabled} from './school-feed.js';
 import {authenticate} from './auth.js';
 import {HttpError,json,readJSON,mutationOrigin,queryData,writePacket} from './http.js';
 import {calendarImport} from './calendar-import.js';
@@ -11,6 +12,7 @@ export {CollectionBudget} from './collection-budget-object.js';
 export {StudentState} from './student-object.js';
 
 const routes = Object.freeze({
+  '/api/assignments':{get:'assignments.list',put:'assignments.put',query:['course_id']},
   '/api/courses': {get:'courses.list',put:'courses.put',query:['term_id']},
   '/api/materials': {get:'materials.list',put:'materials.put',query:['course_id']},
   '/api/progress': {get:'progress.list',put:'progress.put',query:['course_id','status']},
@@ -46,13 +48,18 @@ export default {
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
       }
+      if(path==='/api/daily' && request.method==='GET'){queryData(url,[]);return respond(await dispatch('daily.get'));}
+      if(path==='/api/school-feeds' && ['PUT','DELETE'].includes(request.method)){
+        if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
+        return respond(await student.school({tenantId:identity.tenantId,op:request.method==='PUT'?'put':'remove',data:await readJSON(request)}));
+      }
       if(path.startsWith('/api/google/')) return await handleGoogleRoute({request,url,env,identity,student});
       if(path==='/api/onboarding' && request.method==='GET') {
         queryData(url,[]);
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
         return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
-          connections:results[2].records,capabilities:{...capabilities,google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)}});
+          connections:results[2].records,capabilities:{...capabilities,daily_dashboard:true,school_feeds:schoolFeedsEnabled(env),google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)||schoolFeedsEnabled(env)}});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));

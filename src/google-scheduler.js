@@ -1,3 +1,4 @@
+import {feedSchedules} from './school-feed-state.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
 // Methods below run inside the student's SQL/alarm transaction. No external I/O.
 import {COLLECTION_BUDGET,reserveWindow} from './collection-budget.js';
@@ -6,7 +7,7 @@ import {googleConfigured} from './google-oauth.js';
 export function collectionEnabled(env){return env.GOOGLE_COLLECTION_ENABLED==='true' && googleConfigured(env) && Boolean(env.COLLECTION_BUDGETS);}
 export function initializeGoogleSchedule(store){store.sql.exec('CREATE TABLE IF NOT EXISTS google_schedule (singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)');}
 export class GoogleScheduler {
-  constructor(store,{clock=()=>Date.now(),includeCollections=true,includeRevocations=false}={}){this.store=store;this.clock=clock;this.includeCollections=includeCollections;this.includeRevocations=includeRevocations;}
+  constructor(store,{clock=()=>Date.now(),includeCollections=true,includeRevocations=false,includeFeeds=false}={}){this.store=store;this.clock=clock;this.includeCollections=includeCollections;this.includeRevocations=includeRevocations;this.includeFeeds=includeFeeds;}
   account(){return this.store.row('SELECT * FROM workspace_meta WHERE singleton=1');}
   state(){const row=this.store.row('SELECT body FROM google_schedule WHERE singleton=1');return row?JSON.parse(row.body):{budget:{},next_allowed:0,last_key:'',pending:null,failures:0,paused:false,last_error:null};}
   save(state){this.store.sql.exec('INSERT INTO google_schedule VALUES (1,?) ON CONFLICT(singleton) DO UPDATE SET body=excluded.body',JSON.stringify(state));}
@@ -22,6 +23,7 @@ export class GoogleScheduler {
         items.push({connectionId:selection.id,calendarId,key:selection.id+'\u0000'+calendarId,due:Math.max(row?.next_due??0,row?.job?.lease_expires_at??0,auth.refresh_retry_at??0,auth.refresh_lease?.expires_at??0)});
       }
     }
+    if(this.includeFeeds&&!this.state().paused)for(const row of feedSchedules(this.store)){if(row.status!=='removed'&&row.has_access)items.push({connectionId:row.id,operation:'school_feed',key:'school_feed:'+row.id,due:row.next_due??0});}
     if(this.includeRevocations)items.push(...revocationTasks(this.store));
     return items.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
   }

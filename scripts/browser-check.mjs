@@ -14,7 +14,7 @@ const location=relative(await realpath(repository),await realpath(evidence));
 if(!isAbsolute(location) && location!=='..' && !location.startsWith('..'+sep))throw new Error('Browser evidence must be outside the repository.');
 const profile=await mkdtemp(join(tmpdir(),'school-bridge-synthetic-browser-'));
 const port=process.env.DEMO_PORT || '8767';const root=`http://127.0.0.1:${port}`;
-const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1'},stdio:['ignore','pipe','pipe'],detached:true});
+const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1',DEMO_SCHOOL_FEEDS:'1'},stdio:['ignore','pipe','pipe'],detached:true});
 let demoLog='';demo.stdout.on('data',b=>demoLog+=b);demo.stderr.on('data',b=>demoLog+=b);
 let context,page;const errors=[];const passed=[];
 const ready=()=>page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));
@@ -36,6 +36,21 @@ try{
  assert.match(await page.locator('#connections').innerText(),/Needs authorization/);
  const course=await page.locator('#material-form [name=course_id] option').nth(1).getAttribute('value');
  const source=await page.locator('#source-select option').nth(1).getAttribute('value');
+ // Actual synthetic backend: course feed consent, alarm collection, submission and fresh-chat-style reload.
+ await page.locator('#school-feed-form [name=course_id]').selectOption(course);
+ await page.locator('#school-feed-form [name=feed_url]').fill('https://uga.view.usg.edu/d2l/le/calendar/feed/user/feed.ics?token=synthetic_browser_feed');
+ await page.locator('#school-feed-form [name=consent]').check();await page.locator('#school-feed-form button').click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Course feed saved'));
+ for(let n=0;n<50;n++){const ready=await page.evaluate(async()=>{const data=await(await fetch('/api/daily')).json();return data.counts.overdue===1;});if(ready)break;if(n===49)throw new Error('Synthetic feed was not collected');await new Promise(r=>setTimeout(r,200));}
+ await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#daily-groups').textContent.includes('Synthetic feed exercise due'));
+ await page.getByRole('button',{name:'Save as submitted',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Confirm that you submitted'));
+ assert.equal((await snapshot()).data.progress.length,0);
+ await page.getByRole('checkbox',{name:'I submitted this requirement.',exact:true}).check();await page.getByRole('button',{name:'Save as submitted',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Progress saved and verified'));
+ await page.reload();await ready();assert.match(await page.locator('#daily-groups').innerText(),/Completed · reported submitted \(1\)/);assert.match(await page.locator('#daily-groups').innerText(),/Overdue \(0\)/);
+ assert.doesNotMatch(JSON.stringify(await stored()),/synthetic_browser_feed|feed_url/);assert.doesNotMatch(JSON.stringify(await snapshot()),/synthetic_browser_feed|ciphertext|feed_url/);
+ await page.screenshot({path:join(evidence,'daily-school-dashboard.png'),fullPage:true});
+ passed.push('actual feed UI: explicit consent, server alarm collection, submitted-work confirmation, private URL exclusion and completed status after reload');
  // Render the opt-in consent UI with synthetic route responses. Backend
  // callback/credential behavior is separately tested against actual workerd.
  let googleState={connection_id:source,revision:0,status:'needs_authorization',authorized:false,generation:1,live_sync:false,last_successful_sync:null};
@@ -232,6 +247,9 @@ try{
  assert.deepEqual(errors,[]);
  const report={browser:context.browser()?.version() || await page.evaluate(()=>navigator.userAgent),passed,pageErrors:errors};
  await writeFile(join(evidence,'browser-report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));console.log('Evidence: '+evidence);
+}catch(error){
+ if(page&&!page.isClosed())console.error(JSON.stringify({notice:await page.locator('#notice').innerText(),daily:await page.locator('#daily-groups').innerText(),pageErrors:errors}));
+ throw error;
 }finally{
  if(context)await context.close();try{process.kill(-demo.pid,'SIGTERM');}catch(error){if(error.code!=='ESRCH')throw error;}await new Promise(r=>demo.exitCode!==null?r():demo.once('exit',r));await rm(profile,{recursive:true,force:true});
 }

@@ -2,7 +2,13 @@
 // Loopback-only disposable demo. This is never imported by the deployed Worker.
 import { createServer } from 'node:http';
 import { createRuntime } from '../test/runtime-fixture.mjs';
-const runtime = await createRuntime({ deploymentBundle: process.env.DEMO_DEPLOYMENT_BUNDLE === '1' ? new URL('../dist/index.js', import.meta.url) : undefined });
+const syntheticFeeds=process.env.DEMO_SCHOOL_FEEDS==='1';
+const runtime = await createRuntime({ deploymentBundle: process.env.DEMO_DEPLOYMENT_BUNDLE === '1' ? new URL('../dist/index.js', import.meta.url) : undefined,
+  ...(syntheticFeeds?{bindings:{SCHOOL_FEEDS_ENABLED:'true',GOOGLE_CREDENTIAL_KEY:'A'.repeat(43)},providerFetch:async request=>{
+    const url=new URL(request.url);if(url.hostname!=='uga.view.usg.edu'||url.searchParams.get('token')!=='synthetic_browser_feed')throw new Error('Only synthetic demo feed requests are accepted');
+    const date=new Date(Date.now()-86400000).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    return new Response('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-browser-deadline\r\nDTSTART:'+date+'\r\nSUMMARY:Synthetic feed exercise due\r\nEND:VEVENT\r\nEND:VCALENDAR');
+  }}:{}) });
 const demoPort = Number(process.env.DEMO_PORT || 8766);
 if (!Number.isSafeInteger(demoPort) || demoPort < 1024 || demoPort > 65535) throw new Error('Invalid DEMO_PORT');
 const demoOrigin = `http://127.0.0.1:${demoPort}`;

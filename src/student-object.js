@@ -1,3 +1,5 @@
+import {SchoolFeedState} from './school-feed-state.js';
+import {schoolFeedsEnabled} from './school-feed.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
 import { DurableObject } from 'cloudflare:workers';
 import { StudentStore } from './store.js';
@@ -18,7 +20,7 @@ export class StudentState extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       this.store = new StudentStore(ctx.storage);
       this.collection = new GoogleCollectionState(this.store);
-      this.scheduler = new GoogleScheduler(this.store,{includeCollections:collectionEnabled(env),includeRevocations:googleConfigured(env)&&Boolean(env.COLLECTION_BUDGETS)});
+      this.scheduler = new GoogleScheduler(this.store,{includeFeeds:schoolFeedsEnabled(env),includeCollections:collectionEnabled(env),includeRevocations:googleConfigured(env)&&Boolean(env.COLLECTION_BUDGETS)});
     });
   }
 
@@ -56,11 +58,24 @@ export class StudentState extends DurableObject {
       else {
         const pending=this.scheduler.state().pending;
         if(this.scheduler.account()?.deleted || pending?.id!==plan.reservationId || pending.expires_at<=Date.now())result={kind:'stopped'};
+        else if(plan.operation==='school_feed'){result=await new SchoolFeedState(this.store,{key:this.env.GOOGLE_CREDENTIAL_KEY}).collect(plan.tenantId,plan.connectionId);}
         else {const config=googleConfiguration(this.env);result=plan.operation==='revoke'?await runRevocation({...plan,state:new GoogleRevocationState(this.store,{key:config.key}),client:createRevocationClient()}):await collectGooglePage({...plan,collection:this.collection,state:new GoogleConnectionState(this.store,{key:config.key}),config});}
       }
     } catch { failed=true; }
     finally {clearTimeout(timer);}
     await this.ctx.storage.transaction(async()=>{this.scheduler.finish(plan.reservationId,result,failed);await this.reschedule(true);});
+  }
+
+  async school(message){
+    try{
+      object(message,['tenantId','op','data']);
+      if(!schoolFeedsEnabled(this.env))return {ok:false,error:'school_feeds_disabled',status:409};
+      const state=new SchoolFeedState(this.store,{key:this.env.GOOGLE_CREDENTIAL_KEY});
+      const commit=callback=>this.ctx.storage.transaction(async()=>{const result=callback();this.scheduler.selectionChanged();await this.reschedule();return result;});
+      if(message.op==='put')return await state.put(message.tenantId,message.data,commit);
+      if(message.op==='remove')return await state.remove(message.tenantId,message.data,commit);
+      return {ok:false,error:'unknown_operation',status:404};
+    }catch(error){return {ok:false,error:error instanceof ContractError?error.code:'school_feed_unavailable',status:error instanceof ContractError?error.status:503};}
   }
 
   // Narrow internal operations. Verifiers, tokens and leases never cross RPC.

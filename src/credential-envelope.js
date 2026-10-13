@@ -18,7 +18,7 @@ function decode(value, max) {
 function context({ tenantId, connectionId, generation, purpose }) {
   if (typeof tenantId !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(tenantId) ||
       typeof connectionId !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(connectionId) ||
-      !Number.isSafeInteger(generation) || generation < 1 || !['google_tokens', 'google_oauth_pending'].includes(purpose)) fail('credential_context_invalid');
+      !Number.isSafeInteger(generation) || generation < 1 || !['google_tokens', 'google_oauth_pending', 'school_feed'].includes(purpose)) fail('credential_context_invalid');
   // Ordered tuple prevents ambiguous concatenation and cross-purpose reuse.
   return encoder.encode(JSON.stringify(['school-bridge-credential', 1, tenantId, connectionId, generation, purpose]));
 }
