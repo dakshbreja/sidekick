@@ -14,12 +14,12 @@ const location=relative(await realpath(repository),await realpath(evidence));
 if(!isAbsolute(location) && location!=='..' && !location.startsWith('..'+sep))throw new Error('Browser evidence must be outside the repository.');
 const profile=await mkdtemp(join(tmpdir(),'school-bridge-synthetic-browser-'));
 const port=process.env.DEMO_PORT || '8767';const root=`http://127.0.0.1:${port}`;
-const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1',DEMO_SCHOOL_FEEDS:'1'},stdio:['ignore','pipe','pipe'],detached:true});
+const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1',DEMO_SCHOOL_FEEDS:'1',DEMO_TUTOR:'1'},stdio:['ignore','pipe','pipe'],detached:true});
 let demoLog='';demo.stdout.on('data',b=>demoLog+=b);demo.stderr.on('data',b=>demoLog+=b);
 let context,page,preferredPath=null;const errors=[];const passed=[];
 const ready=async()=>{await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));if(preferredPath)await go(preferredPath);};
 async function go(path){preferredPath=path;if(new URL(page.url()).pathname===path)return;if(path==='/onboarding/courses'&&!await page.locator('#onboarding-nav').isVisible())await page.locator('.workspace-nav a[href="/onboarding/profile"]').click();await page.locator('nav a[href="'+path+'"]').first().click();await page.waitForURL(root+path);}
-const settled=()=>page.waitForFunction(()=>![...document.querySelectorAll('form button')].some(b=>b.disabled));
+const settled=()=>page.waitForFunction(()=>![...document.querySelectorAll('form:not(#tutor-form) button')].some(b=>b.disabled));
 const snapshot=()=>page.evaluate(async()=>{const data=await (await fetch('/api/account/export')).json();delete data.exported_at;return data;});
 const stored=()=>page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('school-bridge-outbox-v1:')).map(k=>JSON.parse(localStorage.getItem(k))));
 async function launch(){context=await chromium.launchPersistentContext(profile,{executablePath:process.env.BROWSER_EXECUTABLE || '/usr/bin/chromium',headless:true,acceptDownloads:true,args:['--no-sandbox']});page=context.pages()[0];page.on('pageerror',e=>errors.push(e.message));await page.goto(root);await ready();}
@@ -40,7 +40,7 @@ try{
  await page.reload();await ready();assert.equal(new URL(page.url()).pathname,'/notes');assert.equal(await page.locator('#materials').isVisible(),true);
  await page.goto(root+'/?calendar=connected');preferredPath=null;await ready();assert.equal(new URL(page.url()).pathname,'/onboarding/connections');
  await page.goto(root+'/#daily');await ready();assert.equal(new URL(page.url()).pathname,'/dashboard');
- await go('/learning');assert.equal(await page.locator('#learning-page').isVisible(),true);await go('/tutor');assert.match(await page.locator('#tutor-page').innerText(),/Not connected yet/);
+ await go('/learning');assert.equal(await page.locator('#learning-page').isVisible(),true);await go('/tutor');assert.match(await page.locator('#tutor-page').innerText(),/Free website tutor/);
  await go('/onboarding/profile');
  passed.push('separate page routes, first-run onboarding, inert sample walkthrough, browser back/forward, deep-link reload, legacy links and Google return route');
  await page.locator('#profile-form [name=consent]').check();await submit('#profile-form',{display_name:'Synthetic Student A',timezone:'America/New_York'});
@@ -201,6 +201,22 @@ try{
  let replayed=0;await page.route('**/api/materials',async route=>{if(route.request().method()==='PUT')replayed++;await route.continue();});
  await reconcile();assert.equal(replayed,0);assert.equal((await stored()).length,0);assert.equal((await snapshot()).data.materials.length,1);
  passed.push('response loss + browser restart: receipt reconciliation without duplicate send');
+ // Tutor exercises use the actual Worker/store with a fixture-only model binding.
+ await go('/tutor');await page.locator('#tutor-load').click();await page.waitForFunction(()=>document.querySelector('#tutor-status').textContent.includes('remaining today'));
+ await page.locator('#tutor-materials input').check();await page.locator('#tutor-message').fill('Teach me from these synthetic notes.');await page.locator('#tutor-consent').check();
+ let tutorPacket;await page.route('**/api/tutor',async route=>{if(route.request().method()==='POST'){tutorPacket=route.request().postDataJSON();await route.fetch();await route.abort('failed');}else await route.continue();});
+ await page.locator('#tutor-send').click();await page.waitForFunction(()=>document.querySelector('#tutor-status').textContent.includes('Result not confirmed'));
+ await page.unroute('**/api/tutor');await page.locator('#tutor-recover').click();await page.waitForFunction(()=>document.querySelector('#tutor-status').textContent.includes('Recovered your saved session'));
+ assert.match(await page.locator('#tutor-check').innerText(),/Which material is selected/);assert.match(await page.locator('#tutor-thread').innerText(),/0 independently correct/);
+ await page.getByRole('button',{name:'An unrelated website',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#tutor-status').textContent.includes('Saved to your private tutor session'));assert.match(await page.locator('#tutor-thread').innerText(),/1 incorrect/);
+ await page.reload();await ready();await page.locator('#tutor-load').click();await page.waitForFunction(()=>document.querySelector('#tutor-thread').textContent.includes('1 incorrect'));assert.match(await page.locator('#tutor-thread').innerText(),/0 independently correct/);
+ await page.locator('#tutor-consent').check();await page.locator('#tutor-message').fill('Continue with the next concept.');await page.locator('#tutor-send').click();await page.waitForFunction(()=>document.querySelector('#tutor-check').textContent.includes('Which material'));
+ await page.getByRole('button',{name:'Show a source hint',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#tutor-thread').textContent.includes('Source hint'));
+ await page.getByRole('button',{name:'Synthetic material A',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#tutor-thread').textContent.includes('1 correct with help'));
+ await page.getByText('Use another AI assistant',{exact:true}).click();await page.locator('#tutor-handoff').click();await page.waitForFunction(()=>!document.querySelector('#tutor-handoff-text').hidden);assert.match(await page.locator('#tutor-handoff-text').inputValue(),/Disposable synthetic material A/);
+ await page.screenshot({path:join(evidence,'tutor-session.png'),fullPage:true});
+ passed.push('actual tutor: selected sources, durable response-loss recovery, wrong-answer exclusion, assisted checks, reload resume and manual provider handoff');
+
  // Request never reached storage. Preserve the packet across identity changes.
  await page.unroute('**/api/materials');let originalPacket;
  await page.route('**/api/materials',async route=>{if(route.request().method()==='PUT'){originalPacket=route.request().postDataJSON();await route.abort('failed');}else await route.continue();});

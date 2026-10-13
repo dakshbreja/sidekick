@@ -2,9 +2,11 @@
 // Loopback-only disposable demo. This is never imported by the deployed Worker.
 import { createServer } from 'node:http';
 import { createRuntime } from '../test/runtime-fixture.mjs';
-const syntheticFeeds=process.env.DEMO_SCHOOL_FEEDS==='1';
+const syntheticFeeds=process.env.DEMO_SCHOOL_FEEDS==='1',syntheticTutor=process.env.DEMO_TUTOR==='1';
 const runtime = await createRuntime({ deploymentBundle: process.env.DEMO_DEPLOYMENT_BUNDLE === '1' ? new URL('../dist/index.js', import.meta.url) : undefined,
-  ...(syntheticFeeds?{bindings:{SCHOOL_FEEDS_ENABLED:'true',GOOGLE_CREDENTIAL_KEY:'A'.repeat(43)},providerFetch:async request=>{
+  bindings:{...(syntheticFeeds?{SCHOOL_FEEDS_ENABLED:'true',GOOGLE_CREDENTIAL_KEY:'A'.repeat(43)}:{}),...(syntheticTutor?{TUTOR_ENABLED:'true',TUTOR_FREE_TIER_CONFIRMED:'true'}:{})},
+  ...(syntheticTutor?{aiFetch:async request=>{const body=await request.json(),sources=JSON.parse(body.input.messages[1].content).sources;return Response.json({response:JSON.stringify({lesson:'This is a synthetic lesson from your selected notes [S1].',question:'Which material is selected?',choices:['Synthetic material A','Another student’s private notes','An unrelated website','No material'],correct_index:0,source_label:'S1',quote:sources[0].text.slice(0,300),explanation:'The selected source is synthetic material A.'})});}}:{}),
+  ...(syntheticFeeds?{providerFetch:async request=>{
     const url=new URL(request.url);if(url.hostname!=='uga.view.usg.edu'||url.searchParams.get('token')!=='synthetic_browser_feed')throw new Error('Only synthetic demo feed requests are accepted');
     const date=new Date(Date.now()-86400000).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
     return new Response('BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-browser-deadline\r\nDTSTART:'+date+'\r\nSUMMARY:Synthetic feed exercise due\r\nEND:VEVENT\r\nEND:VCALENDAR');

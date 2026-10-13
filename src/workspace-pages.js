@@ -1,10 +1,11 @@
+import {TUTOR_PAGE} from './tutor-ui.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
 export const APP_PATHS=['/','/dashboard','/notes','/learning','/tutor','/calendar','/onboarding','/onboarding/profile','/onboarding/courses','/onboarding/connections','/onboarding/demo','/settings'];
 export const WORKSPACE_NAV=`<nav aria-label="Everyday workspace" class="workspace-nav"><a href="/dashboard">Dashboard</a><a href="/notes">Notes</a><a href="/learning">Learning</a><a href="/tutor">Tutor</a><a href="/calendar">Calendar</a><span class="nav-divider"></span><a href="/onboarding/profile">Setup</a><a href="/onboarding/connections">Connections</a><a href="/settings">Settings</a></nav>
 <section id="onboarding-nav" class="setup-steps" hidden><div class="section-top"><p class="eyebrow">SET UP ONCE. RETURN WHEN THINGS CHANGE.</p><a href="/onboarding/demo">Try the sample walkthrough</a></div><nav aria-label="Setup steps"><a href="/onboarding/profile">1 · Profile</a><a href="/onboarding/courses">2 · Courses</a><a href="/onboarding/connections">3 · Connections</a></nav><p id="setup-progress" class="hint"></p></section>
 <section id="dashboard-start" class="card" hidden><h2>Make this your school day</h2><p>Add your profile and courses, then choose which sources to connect. Your workspace starts empty.</p><a class="button-link" href="/onboarding/profile">Start setup</a> <a href="/onboarding/demo">Preview onboarding</a></section>`;
 export const EXTRA_PAGES=`<section id="learning-page" data-page-section="learning" class="card" hidden><p class="eyebrow">PERSONALIZED LEARNING</p><h2>Your study direction</h2><div id="learning-preferences" class="rows"></div><p><a href="/onboarding/profile">Edit study preferences</a></p><h3>Saved learning progress</h3><p class="hint">Only learning observations explicitly saved in this workspace appear here. Other GPT chats are not imported, and a preference or an explanation does not count as understanding.</p><label>Course<select id="learning-course" class="course-select"></select></label><button id="learning-load" class="secondary">Load saved progress</button><div id="learning-handoff" class="rows" aria-live="polite"></div></section>
-<section id="tutor-page" data-page-section="tutor" class="card" hidden><p class="eyebrow">YOUR COURSE TUTOR</p><span class="pill">Not connected yet</span><h2>A place to learn from your own materials</h2><p>The teaching experience will live here. Model access, source citations and usage limits still need to be connected before tutoring is available.</p><div id="tutor-readiness" class="rows"></div><div class="page-actions"><a class="button-link" href="/notes">Add or review course notes</a><a href="/learning">Review saved learning progress</a></div></section>
+${TUTOR_PAGE}
 <section id="onboarding-demo" data-page-section="demo" class="card" hidden><p class="eyebrow">SAMPLE WALKTHROUGH · NOTHING IS SAVED</p><h2 id="demo-title">1 · Your profile</h2><p id="demo-description"></p><div id="demo-example" class="demo-example"></div><div class="page-actions"><button id="demo-back" class="secondary">Previous</button><button id="demo-next">Next step</button><a href="/onboarding/profile">Set up my own workspace</a></div><p class="hint">All examples are fictional. This walkthrough never requests access, writes profile data or connects a source.</p></section>`;
 export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
   const $=s=>document.querySelector(s);
@@ -12,7 +13,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
     '/dashboard':{page:'dashboard',title:'Your school day.',description:'Deadlines, instructor updates and a clear place to begin.'},
     '/notes':{page:'notes',title:'Your course library.',description:'Keep notes, course text and transcript exports together.'},
     '/learning':{page:'learning',title:'Learning that builds on you.',description:'Your study preferences and explicitly saved learning progress.'},
-    '/tutor':{page:'tutor',title:'Your tutor, in one place.',description:'The home for the upcoming teaching experience.'},
+    '/tutor':{page:'tutor',title:'Your tutor, in one place.',description:'Learn from selected course materials and resume your saved session.'},
     '/calendar':{page:'calendar',title:'See what’s coming.',description:'Your selected Google calendars and imported events.'},
     '/onboarding/profile':{page:'profile',title:'Make this workspace yours.',description:'Start with your profile. School details and study preferences are optional.'},
     '/onboarding/courses':{page:'courses',title:'Add your classes.',description:'Keep each course, section and term separate from the start.'},
@@ -51,7 +52,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
     if(defaultEntry){defaultEntry=false;history.replaceState(null,'',data.profile?'/dashboard':'/onboarding/profile');}
     $('#setup-progress').textContent=(data.profile?'Profile saved':'Profile not saved')+' · '+data.courses.length+' course(s) added · Connections are optional and checked separately.';
     $('#learning-preferences').replaceChildren();row($('#learning-preferences'),'Study goals',data.profile?.study_goals||'No goals saved yet.');row($('#learning-preferences'),'How you like to learn',data.profile?.learning_preferences||'No preferences saved yet.');
-    $('#tutor-readiness').replaceChildren();row($('#tutor-readiness'),'Your preparation',data.courses.length+' course(s) · '+materials.length+' saved material(s). Adding materials prepares your library; it does not activate AI teaching.');
+
     if(!$('#learning-handoff').children.length)row($('#learning-handoff'),'Choose a course','Load its saved progress to see what was actually recorded.');
     renderRoute();
   }
@@ -59,7 +60,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
   $('#learning-load').addEventListener('click',async()=>{
     const course=$('#learning-course').value,expected=workspace()?.workspace_id,generation=++learningGeneration,button=$('#learning-load');if(!course){notice('Choose a course first.',true);return;}button.disabled=true;
     try{assertOwner(expected);const result=await api('/api/learning?course_id='+encodeURIComponent(course),'GET',undefined,expected);assertOwner(expected);if(generation!==learningGeneration||$('#learning-course').value!==course)return;
-      const box=$('#learning-handoff');box.replaceChildren();if(!result.record){row(box,'No saved learning session yet','Your course material is available in Notes. Tutoring is not connected yet.');return;}
+      const box=$('#learning-handoff');box.replaceChildren();if(result.tutor_resume){const t=result.tutor_resume;row(box,'Website tutor · saved '+t.updated_at,t.summary.correct+' independently correct practice checks · '+t.summary.assisted_correct+' with help · '+t.summary.incorrect+' incorrect. '+(t.pending_question?'Next: '+t.pending_question:'Open Tutor to continue.'));}if(!result.record){row(box,'Other saved learning handoffs','Open Tutor to begin or resume a website study session.');return;}
       row(box,'Last saved handoff',result.record.resume||'No resume note was saved.');
       for(const observation of result.record.observations)row(box,observation.topic_id,observation.outcome+' · '+observation.assistance+' · '+observation.evidence+' — '+observation.next_step);
       const summary=result.course_summary;row(box,'Recorded evidence',summary.independent_observed_correct+' independently correct · '+summary.assisted_observed_correct+' correct with assistance · '+summary.observed_partial+' partial · '+summary.observed_incorrect+' incorrect. These counts cover saved observations only.');

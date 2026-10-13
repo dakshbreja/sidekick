@@ -1,3 +1,4 @@
+import {TutorState,runTutor,tutorConfigured} from './tutor.js';
 import {SchoolFeedState} from './school-feed-state.js';
 import {schoolFeedsEnabled} from './school-feed.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
@@ -66,6 +67,16 @@ export class StudentState extends DurableObject {
     await this.ctx.storage.transaction(async()=>{this.scheduler.finish(plan.reservationId,result,failed);await this.reschedule(true);});
   }
 
+  async tutor(message){
+    try{
+      object(message,['tenantId','op','data']);
+      const state=new TutorState(this.store);
+      if(message.op==='read'){object(message.data,['course_id']);return {...state.read(message.tenantId,message.data.course_id),available:tutorConfigured(this.env)};}
+      if(message.op==='operation'){object(message.data,['operation_id']);return state.operation(message.tenantId,message.data.operation_id);}
+      if(message.op==='turn')return await runTutor({store:this.store,env:this.env,tenantId:message.tenantId,data:message.data});
+      return {ok:false,error:'unknown_operation',status:404};
+    }catch(error){return {ok:false,error:error instanceof ContractError?error.code:'tutor_unavailable',status:error instanceof ContractError?error.status:503};}
+  }
   async school(message){
     try{
       object(message,['tenantId','op','data']);

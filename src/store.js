@@ -1,3 +1,4 @@
+import {initializeTutor,tutorExport,clearTutor,TutorState} from './tutor.js';
 import {initializeSchoolFeeds,feedRows,publicFeed} from './school-feed-state.js';
 import {dailyDashboard,schoolItems} from './daily-dashboard.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
@@ -53,6 +54,8 @@ export class StudentStore {
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)');
       initializeRevocations(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)');
+      initializeTutor(this);
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)');
       initializeSchoolFeeds(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)');
     });
@@ -174,6 +177,7 @@ export class StudentStore {
         if (row.kind === 'profile') exported.profile = record;
         else exported[row.kind].push(record);
       }
+      exported.tutor_sessions=tutorExport(this);
       exported.google_calendar_snapshots = exportGoogleSnapshots(this);
       exported.school_feeds=feedRows(this).map(row=>({...publicFeed(row),snapshot:row.snapshot||null}));
       return { ...common, exported_at: this.clock(), deleted: false, data: exported };
@@ -203,7 +207,8 @@ export class StudentStore {
       const records = rows.map((row) => JSON.parse(row.body));
       const record = data.session_id ? records.find((entry) => entry.session_id === data.session_id) ?? null : records[0] ?? null;
       const summary = assessment(records.flatMap((entry) => entry.observations));
-      return { ...common, record, revision: record?.revision ?? 0, course_summary: summary, resume_scope: 'saved_handoffs_only', completeness: 'only_explicitly_saved_observations' };
+      const tutor=new TutorState(this).session(data.course_id);
+      return { ...common, tutor_resume:tutor.revision?{revision:tutor.revision,updated_at:tutor.updated_at,summary:tutor.summary,pending_question:tutor.check?.question||null}:null, record, revision: record?.revision ?? 0, course_summary: summary, resume_scope: 'saved_handoffs_only', completeness: 'only_explicitly_saved_observations' };
     }
     const kind = op.split('.')[0];
     if (!KINDS.includes(kind)) fail('unknown_operation', 404);
@@ -218,7 +223,7 @@ export class StudentStore {
     });
     return { ...common, records, complete: filtered.length <= limit, next_cursor: filtered.length > limit ? records.at(-1).id : null };
   }
-  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [], assignments: [], school_feeds: [] }; }
+  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [], assignments: [], school_feeds: [], tutor_sessions: [] }; }
   write(meta, message, input, requestHash) {
     const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
     if (saved) {
@@ -318,6 +323,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM google_schedule');
     this.sql.exec('DELETE FROM google_revocations');
     this.sql.exec('DELETE FROM school_feeds');
+    clearTutor(this);
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;

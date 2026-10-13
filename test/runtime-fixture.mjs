@@ -5,19 +5,20 @@ import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { createAuthFixture } from './auth-fixtures.mjs';
 
-export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false, deploymentBundle, bindings = {}, providerFetch } = {}) {
+export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false, deploymentBundle, bindings = {}, providerFetch, aiFetch } = {}) {
   const auth = authFixture ?? await createAuthFixture();
   const root = fileURLToPath(new URL('../', import.meta.url));
   const script = deploymentBundle ? await readFile(deploymentBundle, 'utf8') : (await build({ absWorkingDir: root, entryPoints: ['src/index.js'], bundle: true,
     write: false, format: 'esm', platform: 'browser', target: 'es2022', external: ['cloudflare:*', 'node:*'], logLevel: 'silent' })).outputFiles[0].text;
   const outboundRequests = [];
   // v5 explicitly exports this converter for the documented Worker option API.
-  const mf = new Miniflare(convertV4MiniflareOptions({ name: workerName, modules: true, script,
+  const workerOptions = { name: workerName, modules: true, script,
     scriptPath: `${root}test/runtime-worker.mjs`, compatibilityDate: '2026-10-12',
     compatibilityFlags: ['nodejs_compat'], host: '127.0.0.1', port: 0, cf: false,
     unsafeDevRegistryPath: undefined, unsafeRegisterWorker: false,
     unsafeInspectDurableObjects: inspectStorage,
     log: new Log(LogLevel.ERROR), bindings: { ...auth.env, ...bindings },
+    ...(aiFetch?{serviceBindings:{AI:'synthetic-tutor-ai'}}:{}),
     durableObjects: { STUDENTS: { className: 'StudentState', useSQLite: true }, COLLECTION_BUDGETS: {className:'CollectionBudget',useSQLite:true} },
     ...(persistPath ? { resourcePersistencePath: persistPath } : {}),
     outboundService: async (request) => {
@@ -28,7 +29,9 @@ export async function createRuntime({ authFixture, persistPath, workerName = 'co
       }
       return new Response(JSON.stringify(auth.jwks), { headers: { 'content-type': 'application/json' } });
     },
-  }));
+  };
+  const aiWorker={name:'synthetic-tutor-ai',modules:true,compatibilityDate:'2026-10-12',script:`import {WorkerEntrypoint} from 'cloudflare:workers'; export default class extends WorkerEntrypoint {async run(model,input){const response=await this.env.RESPONSE.fetch(new Request('https://ai-fixture.example.invalid/',{method:'POST',body:JSON.stringify({model,input})}));return response.json();}}`,serviceBindings:{RESPONSE:aiFetch}};
+  const mf=new Miniflare(convertV4MiniflareOptions(aiFetch?{workers:[workerOptions,aiWorker],...(persistPath?{resourcePersistencePath:persistPath}:{})}:workerOptions));
   try { await mf.ready; } catch (error) { await mf.dispose(); throw error; }
   const origin = 'https://community.example.invalid';
   const request = (path, { student = 'a', method = 'GET', body, headers = {} } = {}) => {
