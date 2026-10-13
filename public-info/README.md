@@ -1,7 +1,7 @@
-# Separate public information site — staged, not deployed
+# Separate public information site
 
-This static site has no bindings, storage, credentials, forms, scripts or outbound application requests. It serves only About, Privacy and Terms. The private workspace and its Access policy must remain unchanged.
+Published with the owner's explicit approval on October 13, 2026: https://school-bridge-community-info.h3htnf3z.workers.dev/ (About), `/privacy`, and `/terms`. Deployment version: `a8c3761d-effa-4a6e-acee-ff743676a120`. Browser readback verified the home and privacy pages.
 
-Proposed dedicated address: `school-bridge-community-info` on the operator's existing Workers subdomain. Before enabling its public route, review the rendered pages and obtain approval for these public documents. Repository defaults deliberately keep its public route disabled. Google currently blocks Production mode pending completed branding information. After publication, use this site's home/privacy/terms URLs for Google branding and preserve the private app's existing OAuth callback.
+This static site has no bindings, storage, credentials, forms, scripts or outbound application requests. The private workspace and its Access policy are separate and unchanged. Repository defaults keep the public route disabled; the approved deployment uses a protected external configuration.
 
-Provider verification and domain ownership requirements can remain separate gates. Publication alone does not verify Google consent, collection or Production status.
+Google branding uses these public home/privacy/terms URLs and retains the private application's existing OAuth callback. Google verification and domain ownership requirements can remain separate gates. Public information pages do not establish successful calendar consent or sync.
