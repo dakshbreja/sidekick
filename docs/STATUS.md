@@ -2,7 +2,7 @@
 
 Status date: October 13, 2026.
 
-The private operator tutor is enabled again after the lesson-generation repair. It is a course-text teaching preview with saved sessions and recognition checks, not the full personal Bridge or a general-student release. Workspaces remain separate and initially empty; no personal Bridge records or credentials were imported.
+The private operator tutor is enabled again after the lesson-generation repair. It is a course-text teaching preview with saved sessions and recognition checks, not the full personal Bridge or a general-student release. Workspaces remain separate and initially empty. No credentials or bulk personal Bridge records were imported; the owner later explicitly authorized the bounded material test below.
 
 ## Website tutor — repaired and enabled — October 13, 2026
 
@@ -12,11 +12,21 @@ The model previously returned headings instead of explanations. A flat provider 
 
 These are multiple-choice recognition checks against a generated answer, not mastery or free-response grading. Incorrect and assisted results remain separate; lessons, self-reports and free-text requests do not count as understanding. Structural checks and source provenance do not prove semantic correctness. The model has no tools, coursework-write authority or access to other chats. Other assistants are supported through an explicit manual handoff, not live account linking.
 
-Free-only operation is unchanged: the observed Workers Free plan, no paid fallback, 10 model attempts per student per UTC day and 12 globally, bounded context/output and concurrency. Repository defaults remain disabled. The confirmed private deployment is `74e086a7-eb0d-4b13-ae72-f5164207f785`, with teaching enabled. Public information deployment remains `74d51598-795f-4bed-a622-c817acbdec65`.
+Free-only operation is unchanged: the observed Workers Free plan, no paid fallback, 10 model attempts per student per UTC day and 12 globally, bounded context/output and concurrency. Repository defaults remain disabled. The current confirmed private deployment is `992085b1-aaac-4cbc-9b7b-7ac41d9d0283`, with teaching enabled. Public information deployment remains `74d51598-795f-4bed-a622-c817acbdec65`.
 
 Verification: **323 automated tests passed**, along with privacy/plugin checks, Worker build and executable artifact verification. An initial parallel run exposed a timing-sensitive calendar-alarm assertion; its focused rerun and the full run with concurrency limited to two both passed, with no calendar implementation change. Eleven tutor tests cover malformed/insufficient output, answer placement, duplicate options, errors/assistance/history, exact replay, tenant isolation, restart, rollback, deletion and quotas. The earlier 22-scenario rendered browser run remains prior evidence, not a new run for this repair.
 
 Bounded real-model tests with synthetic material passed a numerical misconception correction and conceptual lesson; a request for unsupported instructor/exam details returned a refusal. The deployed browser then produced a substantive inventory lesson, corrected the earlier error, and restored the identical pending question and choice order in a fresh tab. An intentionally wrong answer was saved as incorrect; reload retained zero independent successes and two incorrect synthetic attempts. No real coursework record was changed. This is a small synthetic quality sample, not a broad tutoring evaluation. See `docs/TUTOR.md` for the contract and limitations.
+
+## Owner-authorized material test — October 13, 2026
+
+The owner explicitly authorized testing selected actual course material in his own authenticated workspace. Two bounded excerpts were imported through the normal UI into a clearly labeled operator-test course. This is a narrow manual import, not bulk personal Bridge migration, automatic source connection or general student admission. Material text, account exports, source identities, screenshots and model responses remain outside Git. Test answers are operator actions, not learner accomplishments; personal coursework and learning records were not written.
+
+Four bounded free-provider calls tested explanation, an intentional misconception, continuation and source attribution. The first lesson correctly distinguished the two source concepts. A fresh-tab continuation remembered the wrong answer but exposed source labels changing with relevance ranking, as well as a repeated question. Labels now attach before ranking, old citation labels are removed from model history, and the prompt asks for a different supported angle and question. Short excerpts up to 2,200 characters stay intact, preventing supporting detail from being split away; longer passages retain bounded overlap. The four-passage and 8,000-byte selection caps and 18,000-byte total prompt cap remain. The final live lesson cited its supporting source and advanced the topic; the final small tail-chunk cleanup was covered by unit/runtime and artifact checks without another inference call.
+
+Fresh-tab and reload comparisons confirmed the exact saved thread, pending question and option order. A deliberately incorrect answer remained incorrect with zero independent successes. The other independently authenticated operator account showed only its original fixture and an empty tutor; its current workspace export contained neither the imported course/material text nor the tutor session. These observations plus synthetic runtime isolation tests support the tested boundaries, not a complete security audit.
+
+After the follow-up code changes, all **14 focused tutor tests** passed, along with Worker build, executable artifact and private-denylist checks. The earlier 323-test full run remains prior evidence; it was not repeated for this bounded follow-up. The lesson sample is small, questions remain basic recognition checks, and semantic correctness is not guaranteed by citation validation. Earlier flawed test turns remain as evaluation history in the labeled private test course; they do not represent learner progress.
 
 ## School collection and daily dashboard — October 13, 2026
 

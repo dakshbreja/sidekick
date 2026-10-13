@@ -49,3 +49,24 @@ test('bounded tutor history retains the prior error, question and assistance for
  const messages=tutorPrompt({turns:[{kind:'answer',text:'40 units',question:'50 plus 10?',feedback:'Add the buffer: 60 units.',outcome:'incorrect',assistance:'independent'}],check:null},'Explain my mistake',sources);
  const history=JSON.parse(messages[1].content).recent_history[0];assert.equal(history.outcome,'incorrect');assert.equal(history.assistance,'independent');assert.match(history.feedback,/60 units/);assert.ok(new TextEncoder().encode(JSON.stringify(messages)).length<=TUTOR_LIMITS.inputBytes);
 });
+
+test('source labels stay attached to passages when relevance order or selection changes',()=>{
+ const materials=[{id:'b-material',revision:1,title:'Synthetic beta',text:'Beta facts about mountains.'},{id:'a-material',revision:1,title:'Synthetic alpha',text:'Alpha facts about oceans.'}];
+ const first=selectExcerpts(materials,'mountains'),next=selectExcerpts([...materials].reverse(),'oceans');
+ assert.deepEqual(first.map(s=>[s.material_id,s.start,s.label]),next.map(s=>[s.material_id,s.start,s.label]));
+ const long=[{id:'a-material',revision:1,title:'Synthetic long',text:('Mountain passage. '+'.'.repeat(883))+('Ocean passage. '+'.'.repeat(886)).repeat(10)}];
+ const ranks=selectExcerpts(long,'mountain'),changed=selectExcerpts(long,'ocean');
+ for(const a of ranks){const b=changed.find(b=>b.start===a.start);if(b)assert.equal(b.label,a.label);}
+});
+test('prior citation labels cannot impersonate current sources after materials change',()=>{
+ const messages=tutorPrompt({turns:[{kind:'lesson',request:'Explain [S3]',text:'Prior fact [S1] and [S4].'},{kind:'answer',text:'Choice [S1]',question:'Prior question [S5]?',feedback:'Old explanation [S2]',outcome:'incorrect',assistance:'independent'}],check:{question:'Pending question?'}},'Continue',selectExcerpts([{...material,revision:1}],'safety'));
+ const data=JSON.parse(messages[1].content);assert.ok(!/\[S\d+\]/.test(JSON.stringify(data.recent_history)));assert.equal(data.pending_question,'Pending question?');assert.equal(data.recent_history[1].outcome,'incorrect');assert.match(messages[0].content,/different from the pending question/);
+});
+
+test('short source extracts stay intact while retrieval remains byte-bounded',()=>{
+ const text='Synthetic introduction. '+('Context sentence. '.repeat(105))+'Supporting conclusion at the end.';
+ assert.ok(text.length>1800&&text.length<2200);
+ const sources=selectExcerpts([{...material,revision:1,text}],'conclusion');assert.equal(sources.length,1);assert.equal(sources[0].text,text);
+ assert.equal(decodeTutorResponse(providerLesson(lesson),sources).quote,text);
+ const large=selectExcerpts([{...material,revision:1,text:'界'.repeat(20000)}],'界');assert.ok(new TextEncoder().encode(JSON.stringify(large)).length<8000);assert.ok(large.every(s=>s.text.length<=2200));
+});
