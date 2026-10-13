@@ -32,6 +32,14 @@ Course-wide resume now defaults to `scope: learning`, selecting only non-test ch
 
 The Tutor page starts in normal study view. An explicit simulation checkbox reveals the separate test checkpoint and resets on reload or course/account changes. Prepare Claude continuation produces a reviewable prompt with only course/session identifiers, the selected scope and study instructions; it includes no material passages or learner answers, sends nothing, and grants no access. The prompt requires the existing approved connector, stops on missing/revoked access, preserves test-only saves and asks for save confirmation. Other providers retain the manual material-handoff path.
 
+## Automatic source-version check
+
+Every resume includes `source_check` with `status`, `can_use_saved_sources`, `checked_at`, `checked_account_revision`, per-source saved/current revisions, `scope: current_bridge_material_versions`, `upstream_freshness: unknown` and `next_action`. It is computed synchronously from the same student store on every read; it is not a cached checkpoint field. Every saved reference must retain its revision, same-course ownership, valid bounds and exact excerpt text for status `current`. Missing or wrong-course sources return `unavailable` without exposing another course's metadata; any unavailable source takes precedence over changed sources. No checkpoint returns `no_checkpoint`. Only `current` permits using the saved excerpts.
+
+Changed sources require a fresh material read at the returned current revision, starting at zero because offsets can move. Unavailable sources require an available replacement selected by the learner. The assistant must not silently regrade historical responses or claim that eLC was checked. Resume does not write, migrate or replace history. A subsequent save still validates source revisions; an exact historical retry still recovers its original receipt. The website shows the check and embeds its handling rules in the prepared continuation. This check does not guarantee model compliance or source-collector freshness.
+
+For a disposable changed-source browser fixture, run `DEMO_STUDY=1 DEMO_STUDY_CHANGED=1 DEMO_PORT=8774 node scripts/demo.mjs`. Open Student A's Tutor page and enable simulation checkpoints. Its saved five-unit buffer excerpt stays historical while the current material has an eight-unit buffer. Student B has no checkpoint. No real materials or model calls are used.
+
 ## Local interfaces
 
 - `GET /api/study?course_id=...&session_id=...` (session and scope optional): resume through the normal authenticated website boundary.

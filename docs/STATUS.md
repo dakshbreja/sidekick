@@ -2,13 +2,19 @@
 
 Status date: October 13, 2026.
 
+## Automatic source checks on resume — October 13, 2026
+
+Every website/connector study resume now compares all saved source revisions, course ownership, passage bounds and exact text with current materials in the same student store. The response includes a read-only `source_check`: current, changed, unavailable or no checkpoint. Changed/missing sources cannot be represented as current; instructions require reading updated material from the beginning or selecting an available source before teaching/assessment. Historical checkpoints remain unchanged. The website displays the result and its prepared Claude continuation explicitly handles it. This closes the server-side version-check gap observed below without depending on an extra learner reminder.
+
+All 352 automated checks passed, including actual Worker/SQLite tests for unchanged, updated, missing, wrong-course and inconsistent sources, multiple saved references, restart, immutable historical records, stale-save rejection, exact retry recovery and two-owner OAuth separation. Build, executable bundle and private-reference privacy scan passed. A disposable browser fixture displayed the changed-source warning and the revised continuation instructions. The website and connector were deployed to the existing private pilot. Hosted read-only verification displayed matching saved source versions and the updated continuation; the normal view was restored afterward. No real learning progress, material, grant or paid inference was changed. This verifies current Bridge versions only: original-portal/eLC freshness remains unknown. Claude's compliance with the new warning has not been retested with a new live model call.
+
 ## Website-to-Claude continuation — live simulated check, October 13, 2026
 
 The deployed website's prepared continuation was pasted unchanged into a fresh Claude chat, with explicit test/tool restrictions appended. Claude requested the exact course, named session and `scope: test`, retrieved revision 1, identified its prior error and asked the saved follow-up without revealing the answer or writing. One authorized fictional response was then saved to that same test session at revision 2; the separate operation receipt, exact-session readback and independent website display agreed. Claude caught the response's remaining incorrect reasoning and missing quotation, recorded assistance as hints and retained test-only status rather than granting learning credit.
 
 Normal website view still returned no non-test checkpoint for the test course, native practice totals remained unchanged, and the other signed-in workspace retained its original course and zero practice counts. The temporary course-specific grant was revoked afterward. No actual coursework, source material or personal Bridge record was modified; no website inference or paid API call was used. Private evidence stays outside Git.
 
-Limit: the first resume relied on saved source snapshots and did not independently refresh current material versions. An explicit reminder in the second message led to a fresh metadata check and versioned passage read before assessment/save. Therefore session selection and save-back passed, while unprompted source-freshness checking remains a follow-up. This is one bounded live continuation, not a new broad grading or security benchmark.
+Limit: the first resume relied on saved source snapshots and did not independently refresh current material versions. An explicit reminder in the second message led to a fresh metadata check and versioned passage read before assessment/save. Therefore session selection and save-back passed. The automatic server-side Bridge version check documented above now addresses this gap; upstream source freshness and model compliance remain separate limits. This is one bounded live continuation, not a new broad grading or security benchmark.
 
 ## Everyday study resume — October 13, 2026
 

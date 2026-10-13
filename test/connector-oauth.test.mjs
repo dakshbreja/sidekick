@@ -81,6 +81,10 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',packet)).replayed,true);
     assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_id:'shared'})).record,null);
     assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'SHARED',scope:'test'})).record,saved.record);
+    const checked=value(await rpc(a.tokens.access_token,'study_resume',{course_query:'SHARED',scope:'test'}));
+    assert.equal(checked.source_check.status,'current');assert.equal(checked.source_check.can_use_saved_sources,true);
+    assert.equal(checked.source_check.sources[0].current_revision,1);
+    assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_query:'SHARED',scope:'test'})).source_check.status,'no_checkpoint');
     assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_query:'SHARED'})).record,null);
     assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'HIDDEN'})).error,'course_not_found_or_not_authorized');
     assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'Synthetic b shared'})).error,'course_not_found_or_not_authorized');

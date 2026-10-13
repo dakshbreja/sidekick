@@ -24,6 +24,10 @@ if(syntheticStudy){
   const owner=(await(await runtime.request('/api/onboarding')).json()).workspace_id;
   const result=await runtime.request('/api/study-connector-preview',{method:'POST',headers:{'X-Workspace-Id':owner},body:{jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'study_save_checkpoint',arguments:{operation_id:'synthetic-study-checkpoint',expected_revision:0,course_id:'synthetic-course',session_id:'synthetic-session',topic:'Inventory reasoning',question:'Explain the reorder point, including the safety buffer.',response:'Ten units a day for three days means 30 units.',assistance:'independent',test_only:true,next_step:'Explain the missing five-unit buffer, then try a different lead time.',sources:[{material_id:'synthetic-material',revision:1,start:0,end:text.length}],criteria:[{criterion:'Demand during lead time',verdict:'met',evidence_quote:'three days means 30 units',reason:'Correctly combines demand and lead time.'},{criterion:'Safety buffer',verdict:'not_evidenced',evidence_quote:'',reason:'The response has not explained the buffer or the final 35-unit result.'}]}}}});
   if(!(await result.json()).result?.structuredContent?.ok)throw new Error('Synthetic connector save failed');
+  if(process.env.DEMO_STUDY_CHANGED==='1'){
+    const changed=await runtime.request('/api/materials',{method:'PUT',body:{operation_id:crypto.randomUUID(),expected_revision:1,id:'synthetic-material',course_id:'synthetic-course',title:'Updated synthetic inventory notes A',text:'Updated synthetic inventory notes: use a safety buffer of 8 units. The earlier five-unit passage is historical.',source_kind:'manual'}});
+    if(!changed.ok)throw new Error('Synthetic source revision setup failed');
+  }
 }
 const server = createServer(async (req, res) => {
   try {

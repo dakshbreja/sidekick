@@ -79,12 +79,19 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
     assert.equal(saved.record.sources[0].text,sourceText);
     const website=await req('/api/study?course_id=synthetic-course&scope=test');assert.deepEqual(website.record,saved.record);
     assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).record,saved.record);
+    assert.equal(website.source_check.status,'current');
+    assert.equal(website.source_check.can_use_saved_sources,true);
+    assert.equal(website.source_check.checked_account_revision,saved.account_revision);
+    assert.equal(website.source_check.upstream_freshness,'unknown');
+    assert.deepEqual(website.source_check.sources,[{material_id:'synthetic-material',saved_revision:1,current_revision:1,status:'current'}]);
+    assert.ok(Number.isFinite(Date.parse(website.source_check.checked_at)));
     const tutor=await req('/api/tutor?course_id=synthetic-course');assert.deepEqual(tutor.session.summary,{correct:0,assisted_correct:0,incorrect:0});
     const exp=await req('/api/account/export');assert.deepEqual(exp.data.progress,[]);assert.deepEqual(exp.data.learning,[]);assert.deepEqual(exp.data.study_sessions,[saved.record]);
   });
   await t.test('default continuation excludes simulations; explicit test and session reads stay available',async()=>{
     assert.equal((await req('/api/study?course_id=synthetic-course')).record,null);
     assert.equal((await rpc('study_resume',{course_query:'Synthetic course a'})).record,null);
+    assert.equal((await rpc('study_resume',{course_query:'Synthetic course a'})).source_check.can_use_saved_sources,false);
     assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:packet.session_id})).record,saved.record);
     assert.equal((await rpc('study_resume',{course_id:'synthetic-course',session_id:packet.session_id,scope:'learning'})).record,null);
     assert.equal((await rpc('study_resume',{course_id:'synthetic-course',scope:'test'},'b')).record,null);
@@ -123,12 +130,22 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
   });
   await t.test('source changes reject new saves but cannot invalidate recovery of the exact earlier save',async()=>{
     await req('/api/materials',{method:'PUT',body:write({id:'synthetic-material',course_id:'synthetic-course',title:'Updated synthetic notes',text:'Changed source content.',source_kind:'manual',expected_revision:1})});
+    const before=await req('/api/account/export');
+    const resumed=await rpc('study_resume',{course_id:'synthetic-course',session_id:packet.session_id});
+    assert.deepEqual(resumed.record,saved.record); // History is never silently rewritten.
+    assert.equal(resumed.source_check.status,'changed');assert.equal(resumed.source_check.can_use_saved_sources,false);
+    assert.deepEqual(resumed.source_check.sources,[{material_id:'synthetic-material',saved_revision:1,current_revision:2,status:'changed'}]);
+    assert.match(resumed.source_check.next_action,/starting at 0/);
+    assert.equal(resumed.source_check.upstream_freshness,'unknown');
+    assert.deepEqual((await req('/api/account/export')).data,before.data);
+    assert.equal((await req('/api/account/export')).account_revision,before.account_revision);
     assert.equal((await rpc('study_save_checkpoint',{...packet,operation_id:crypto.randomUUID(),expected_revision:1})).error,'source_revision_conflict');
     assert.equal((await rpc('study_save_checkpoint',packet)).replayed,true);
   });
   await t.test('fresh runtime resumes the exact checkpoint and deletion removes it without affecting B',async()=>{
     const authFixture=rt.authFixture;await rt.close();rt=await createRuntime({persistPath,authFixture,bindings:{STUDY_CONNECTOR_PREVIEW:'true'}});
     assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).record,saved.record);
+    assert.equal((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).source_check.status,'changed');
     const exp=await req('/api/account/export');await req('/api/account',{method:'DELETE',body:{operation_id:crypto.randomUUID(),expected_revision:exp.account_revision,confirm:'DELETE_MY_WORKSPACE'}});
     assert.equal((await rpc('study_resume',{course_id:'synthetic-course'})).error,'account_deleted');
     assert.equal((await rpc('study_get_receipt',{operation_id:packet.operation_id})).error,'account_deleted');
@@ -173,4 +190,32 @@ test('course lookup does not select a first-page match when coverage is incomple
   };
   const result=await studyProtocol(call('study_resume',{course_query:'SYN101'}),{dispatch,scopes:['study:read']});
   assert.equal(result.result.structuredContent.error,'course_lookup_incomplete');assert.equal(reads,0);assert.equal(lists,2);
+});
+
+
+test('resume source checks fail closed for missing, wrong-course and inconsistent snapshots',async t=>{
+  const f=sqliteFixture();t.after(()=>f.close());const store=new StudentStore(f.storage),tenantId='synthetic_student_a';
+  const dispatch=(op,data,packet={})=>store.dispatch({tenantId,op,data,...packet});
+  for(const [op,data] of [['courses.put',{id:'synthetic-course',code:'SYN',title:'Synthetic',section:'A',term_id:'demo'}],['materials.put',{id:'synthetic-material',course_id:'synthetic-course',title:'Synthetic notes',text:sourceText,source_kind:'manual'}]])assert.equal((await dispatch(op,data,{operationId:crypto.randomUUID(),expectedRevision:0})).ok,true);
+  assert.equal((await dispatch('materials.put',{id:'synthetic-other-material',course_id:'synthetic-course',title:'Another synthetic source',text:sourceText,source_kind:'manual'},{operationId:crypto.randomUUID(),expectedRevision:0})).ok,true);
+  const packet=checkpoint();packet.sources.unshift({...packet.sources[0],material_id:'synthetic-other-material'});
+  const saved=await dispatch('study.put',packet,{operationId:crypto.randomUUID(),expectedRevision:0});assert.equal(saved.ok,true);
+  const read=()=>dispatch('study.get',{course_id:'synthetic-course',session_id:'synthetic-session'});
+  const material=store.getRecord('materials','synthetic-material');
+  const replace=body=>store.sql.exec("UPDATE records SET body = ? WHERE kind = 'materials' AND id = ?",JSON.stringify(body),'synthetic-material');
+  assert.equal((await read()).source_check.status,'current');
+  // Defensive fixtures model inconsistent storage and a foreign-course ID;
+  // normal writes cannot move a material between courses or retain its revision.
+  replace({...material,text:'short'});
+  assert.equal((await read()).source_check.can_use_saved_sources,false);
+  replace({...material,text:'X'.repeat(sourceText.length)});
+  assert.equal((await read()).source_check.status,'changed');
+  replace({...material,course_id:'unapproved-course',revision:987,title:'Do not expose this',text:'Do not expose this'});
+  const foreign=await read();assert.equal(foreign.source_check.status,'unavailable');
+  assert.equal(foreign.source_check.sources[1].current_revision,null);
+  assert.ok(!JSON.stringify(foreign).includes('Do not expose this'));
+  store.sql.exec("DELETE FROM records WHERE kind = 'materials' AND id = ?",'synthetic-material');
+  const missing=await read();assert.equal(missing.source_check.status,'unavailable');assert.equal(missing.source_check.can_use_saved_sources,false);
+  assert.deepEqual(missing.record,saved.record);
+  assert.equal((await dispatch('study.receipt',{operation_id:saved.receipt.operation_id})).receipt.revision,1);
 });
