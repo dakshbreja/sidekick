@@ -41,6 +41,7 @@ export class StudentStore {
       this.sql.exec('CREATE TABLE IF NOT EXISTS records (kind TEXT NOT NULL, id TEXT NOT NULL, course_id TEXT, revision INTEGER NOT NULL, updated_at TEXT NOT NULL, body TEXT NOT NULL, byte_count INTEGER NOT NULL, PRIMARY KEY(kind, id))');
       this.sql.exec('CREATE INDEX IF NOT EXISTS records_by_course ON records(kind, course_id, id)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS operations (operation_id TEXT PRIMARY KEY, request_hash TEXT NOT NULL, body TEXT NOT NULL, byte_count INTEGER NOT NULL)');
+      this.sql.exec('CREATE TABLE IF NOT EXISTS connector_grants (id TEXT PRIMARY KEY, body TEXT NOT NULL)');
       this.sql.exec('CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY)');
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (1)');
       // Private connector state never enters records, operation receipts or exports.
@@ -320,6 +321,7 @@ export class StudentStore {
     const result = { ok: true, deleted: true, revision: accountRevision, account_revision: accountRevision, receipt };
     this.sql.exec('DELETE FROM records');
     this.sql.exec('DELETE FROM operations');
+    this.sql.exec('DELETE FROM connector_grants');
     this.sql.exec('DELETE FROM google_connections');
     this.sql.exec('DELETE FROM google_choices');
     clearGoogleCollection(this);

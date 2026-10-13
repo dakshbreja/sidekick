@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { readFile } from 'node:fs/promises';
 import { createAuthFixture } from './auth-fixtures.mjs';
 
-export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false, deploymentBundle, bindings = {}, providerFetch, aiFetch } = {}) {
+export async function createRuntime({ authFixture, persistPath, workerName = 'community-test', inspectStorage = false, deploymentBundle, bindings = {}, providerFetch, aiFetch, connector = false } = {}) {
   const auth = authFixture ?? await createAuthFixture();
   const root = fileURLToPath(new URL('../', import.meta.url));
   const script = deploymentBundle ? await readFile(deploymentBundle, 'utf8') : (await build({ absWorkingDir: root, entryPoints: ['src/index.js'], bundle: true,
@@ -31,7 +31,14 @@ export async function createRuntime({ authFixture, persistPath, workerName = 'co
     },
   };
   const aiWorker={name:'synthetic-tutor-ai',modules:true,compatibilityDate:'2026-10-12',script:`import {WorkerEntrypoint} from 'cloudflare:workers'; export default class extends WorkerEntrypoint {async run(model,input){const response=await this.env.RESPONSE.fetch(new Request('https://ai-fixture.example.invalid/',{method:'POST',body:JSON.stringify({model,input})}));return response.json();}}`,serviceBindings:{RESPONSE:aiFetch}};
-  const mf=new Miniflare(convertV4MiniflareOptions(aiFetch?{workers:[workerOptions,aiWorker],...(persistPath?{resourcePersistencePath:persistPath}:{})}:workerOptions));
+  let connectorWorker;
+  if(connector){
+    const connectorScript=(await build({absWorkingDir:root,entryPoints:['src/connector-worker.js'],bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:*','node:*'],logLevel:'silent'})).outputFiles[0].text;
+    workerOptions.bindings.CONNECTOR_ENABLED='true';
+    workerOptions.serviceBindings={...workerOptions.serviceBindings,CONNECTOR_AUTH:'study-connector-test'};
+    connectorWorker={name:'study-connector-test',modules:true,script:connectorScript,compatibilityDate:'2026-10-12',compatibilityFlags:['nodejs_compat'],bindings:{CONNECTOR_ORIGIN:'https://connector.example.invalid',BRIDGE_ORIGIN:'https://community.example.invalid'},kvNamespaces:['OAUTH_KV'],durableObjects:{CONNECTOR_REQUESTS:{className:'ConnectorRequests',useSQLite:true}},serviceBindings:{BRIDGE:{name:workerName,entrypoint:'ConnectorBackend'}}};
+  }
+  const mf=new Miniflare(convertV4MiniflareOptions(aiFetch||connector?{workers:[workerOptions,...(aiFetch?[aiWorker]:[]),...(connector?[connectorWorker]:[])],...(persistPath?{resourcePersistencePath:persistPath}:{})}:workerOptions));
   try { await mf.ready; } catch (error) { await mf.dispose(); throw error; }
   const origin = 'https://community.example.invalid';
   const request = (path, { student = 'a', method = 'GET', body, headers = {} } = {}) => {

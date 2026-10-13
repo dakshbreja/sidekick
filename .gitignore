@@ -1,6 +1,7 @@
 node_modules/
 .wrangler/
 dist/
+dist-connector/
 coverage/
 .env
 .env.*

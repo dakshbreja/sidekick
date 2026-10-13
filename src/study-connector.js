@@ -33,18 +33,18 @@ export async function studyProtocol(message,{dispatch,scopes=[]}) {
     if(message.jsonrpc!=='2.0'||typeof message.method!=='string')return error(-32600,'Invalid Request');
     if(message.id!==undefined&&typeof message.id!=='string'&&!(Number.isSafeInteger(message.id)))return error(-32600,'Invalid Request');
     if(message.id===undefined) {
-      if(message.method==='notifications/initialized'){object(message.params??{},[]);return null;}
+      if(message.method.startsWith('notifications/'))return null;
       return error(-32600,'Requests require an id');
     }
     if(!scopes.includes('study:read'))return error(-32001,'study_read_permission_required');
     let result;
     if(message.method==='initialize') {
-      object(message.params,['protocolVersion','capabilities','clientInfo']);
-      result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'school-bridge-study-preview',version:'0.1.0'},instructions:STUDY_INSTRUCTIONS};
-    } else if(message.method==='ping'){object(message.params??{},[]);result={};}
-    else if(message.method==='tools/list') {object(message.params??{},[]);result={tools:STUDY_TOOLS.filter(t=>t.name!=='study_save_checkpoint'||scopes.includes('study:write'))};}
+      object(message.params,['protocolVersion','capabilities','clientInfo','_meta']);
+      result={protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'school-bridge-study',version:'0.2.0'},instructions:STUDY_INSTRUCTIONS};
+    } else if(message.method==='ping'){object(message.params??{},['_meta']);result={};}
+    else if(message.method==='tools/list') {object(message.params??{},['_meta','cursor']);if(message.params?.cursor)return error(-32602,'Invalid cursor');result={tools:STUDY_TOOLS.filter(t=>t.name!=='study_save_checkpoint'||scopes.includes('study:write'))};}
     else if(message.method==='tools/call') {
-      object(message.params,['name','arguments']);
+      object(message.params,['name','arguments','_meta']);
       const {name,arguments:args={}}=message.params;
       const definition=STUDY_TOOLS.find(t=>t.name===name);
       if(!definition)return error(-32602,'Unknown tool');

@@ -11,6 +11,9 @@ import {TEXT_IMPORT_MODULE} from './text-import.js';
 import {googleConfigured,GOOGLE_CALLBACK_PATH} from './google-oauth.js';
 import {handleGoogleRoute,googleCallbackRedirect} from './google-routes.js';
 import {collectionEnabled} from './google-scheduler.js';
+import {CONNECTOR_PAGE,CONNECTOR_SCRIPT} from './connector-ui.js';
+import {object} from './validation.js';
+export {ConnectorBackend} from './connector-backend.js';
 export {CollectionBudget} from './collection-budget-object.js';
 export {StudentState} from './student-object.js';
 
@@ -33,6 +36,8 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url),path=url.pathname;
     try {
+      if(env.CONNECTOR_ENABLED==='true'&&request.method==='GET'&&path==='/ai-access')return staticResponse(CONNECTOR_PAGE,'text/html; charset=utf-8');
+      if(env.CONNECTOR_ENABLED==='true'&&request.method==='GET'&&path==='/connector-client.js')return staticResponse(CONNECTOR_SCRIPT,'text/javascript; charset=utf-8');
       if(request.method==='GET' && APP_PATHS.includes(path)) return staticResponse(PAGE,'text/html; charset=utf-8');
       if(request.method==='GET' && path==='/client.js') return staticResponse(CLIENT_SCRIPT,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/write-intent.js') return staticResponse(WRITE_MODULE,'text/javascript; charset=utf-8');
@@ -50,6 +55,18 @@ export default {
       if(expectedWorkspace && expectedWorkspace!==identity.tenantId) throw new HttpError('workspace_changed',403);
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
+      }
+      if(path.startsWith('/api/ai-access')){
+        if(env.CONNECTOR_ENABLED!=='true'||!env.CONNECTOR_AUTH)throw new HttpError('connector_not_configured',503);
+        if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
+        if(path==='/api/ai-access'&&request.method==='GET'){queryData(url,[]);return respond(await student.connector({owner:identity.tenantId,op:'list',data:{}}));}
+        if(path==='/api/ai-access/request'&&request.method==='GET'){const q=queryData(url,['request']);return respond(await env.CONNECTOR_AUTH.describe(q.request));}
+        if(request.method!=='POST'||request.headers.get('Origin')!==url.origin)throw new HttpError('cross_origin_write',403);
+        const data=await readJSON(request,8000);
+        if(path==='/api/ai-access/revoke'){object(data,['grant_id']);return respond(await student.connector({owner:identity.tenantId,op:'revoke',data}));}
+        if(path==='/api/ai-access/approve'){object(data,['request','course_ids','write']);return respond(await env.CONNECTOR_AUTH.approve(data.request,identity.tenantId,data.course_ids,data.write));}
+        if(path==='/api/ai-access/deny'){object(data,['request']);return respond(await env.CONNECTOR_AUTH.deny(data.request));}
+        throw new HttpError('not_found',404);
       }
       if(path==='/api/study-connector-preview'){
         // Same-account developer preview only. Never interpret an Access
@@ -82,7 +99,7 @@ export default {
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
         return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
-          connections:results[2].records,capabilities:{...capabilities,ai_teaching:tutorConfigured(env),daily_dashboard:true,school_feeds:schoolFeedsEnabled(env),google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)||schoolFeedsEnabled(env)}});
+          connections:results[2].records,capabilities:{...capabilities,ai_teaching:tutorConfigured(env),study_connector:env.CONNECTOR_ENABLED==='true'&&Boolean(env.CONNECTOR_AUTH),daily_dashboard:true,school_feeds:schoolFeedsEnabled(env),google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)||schoolFeedsEnabled(env)}});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));

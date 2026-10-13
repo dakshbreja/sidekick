@@ -14,6 +14,7 @@ import { collectGooglePage } from './google-collector.js';
 import {GoogleRevocationState,runRevocation,expireRevocations,revocationExpiry} from './google-revocation.js';
 import {createRevocationClient} from './google-revoke-client.js';
 import { withGoogleAccess } from './google-access.js';
+import {ConnectorGrants} from './connector-grants.js';
 
 export class StudentState extends DurableObject {
   constructor(ctx, env) {
@@ -41,6 +42,12 @@ export class StudentState extends DurableObject {
       if(result.ok && !result.replayed && message.op==='google_selection.put')this.scheduler.selectionChanged();
       await this.reschedule();return result;
     })});
+  }
+  async connector(message) {
+    const grants=new ConnectorGrants(this.store);
+    if(message.op==='active'){try{grants.get(message.owner,message.grantId);return true;}catch{return false;}}
+    if(message.op==='protocol')return grants.protocol(message.owner,message.grantId,message.message,message.scopes);
+    return grants.manage(message.owner,message.op,message.data);
   }
   async alarm() {
     // Commit the reservation and recovery wakeup together, before external I/O.
