@@ -258,7 +258,7 @@ export class StudentStore {
     }
     if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
     this.requireCourse(input.value.course_id);
-    if(input.kind==='study_sessions')input={...input,value:prepareStudy(this,input.value)};
+    if(input.kind==='study_sessions')input={...input,value:prepareStudy(this,input.value,old)};
     if(input.kind==='progress' && input.id.startsWith('daily_')){
       const item=schoolItems(this).find(item=>item.id===input.value.assignment_id);
       if(!item || item.category!=='deadline' || input.id!=='daily_'+item.id || item.course_id!==input.value.course_id || item.title!==input.value.title)fail('assignment_changed',409);

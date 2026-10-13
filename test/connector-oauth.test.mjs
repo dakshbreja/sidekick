@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createHash,randomBytes} from 'node:crypto';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {createRuntime} from './runtime-fixture.mjs';
 
 test('real OAuth transport scopes, saves, resumes and revokes isolated workspaces',async t=>{
-  const rt=await createRuntime({connector:true});t.after(()=>rt.close());
-  const edge=await rt.mf.getWorker('study-connector-test');
+  const persistPath=await mkdtemp(join(tmpdir(),'bridge-pilot-'));
+  let rt=await createRuntime({connector:true,persistPath});t.after(async()=>{await rt.close();await rm(persistPath,{recursive:true,force:true});});
+  let edge=await rt.mf.getWorker('study-connector-test');
   const origin='https://connector.example.invalid',resource=origin+'/mcp',callback='https://claude.ai/api/mcp/auth_callback';
   const owners={};
   const site=async(path,{student='a',body,status=200,...other}={})=>{
@@ -14,10 +18,23 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
   };
   const write=data=>({operation_id:crypto.randomUUID(),expected_revision:0,...data});
   for(const student of ['a','b']){
-    owners[student]=(await(await rt.request('/api/onboarding',{student})).json()).workspace_id;
+    const empty=await(await rt.request('/api/onboarding',{student})).json();
+    assert.equal(empty.profile,null);assert.deepEqual(empty.courses,[]);assert.deepEqual(empty.connections,[]);
+    owners[student]=empty.workspace_id;
+    await site('/api/onboarding',{student,method:'PUT',body:write({display_name:'Synthetic '+student,timezone:'America/New_York',consent_version:'synthetic-pilot-v1',institution:'Synthetic school'})});
     for(const id of ['shared','hidden'])await site('/api/courses',{student,method:'PUT',body:write({id,code:id.toUpperCase(),title:'Synthetic '+student+' '+id,term_id:'test-term',section:student})});
     await site('/api/materials',{student,method:'PUT',body:write({id:'notes',course_id:'shared',title:'Test source',text:'Synthetic '+student+' source: low costs can support a lower price or a higher margin.',source_kind:'manual'})});
   }
+  await t.test('empty workspace setup reaches private calendar and daily dashboard',async()=>{
+    await site('/api/connections',{method:'PUT',body:write({id:'calendar-source',provider:'manual',site_url:'https://calendar.example.invalid/'})});
+    const start=new Date(Date.now()+2*86400000).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
+    const imported=await site('/api/calendar/import',{body:write({id:'calendar',course_id:'shared',source_id:'calendar-source',ics:'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-pilot-event\r\nDTSTART:'+start+'\r\nSUMMARY:Synthetic study meeting\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n'})});
+    assert.equal(imported.record.events.length,1);assert.equal(imported.record.live_sync,false);
+    assert.deepEqual((await site('/api/calendar',{student:'b'})).records,[]);
+    await site('/api/assignments',{method:'PUT',body:write({id:'deadline',course_id:'shared',title:'Synthetic exercise',due_at:new Date(Date.now()-86400000).toISOString(),all_day:false})});
+    const daily=await site('/api/daily');assert.equal(daily.counts.overdue,1);assert.match(daily.briefing,/1 overdue/);
+    assert.equal((await site('/api/daily',{student:'b'})).counts.overdue,0);
+  });
   const edgePost=(path,body,token)=>edge.fetch(origin+path,{method:'POST',headers:{'content-type':'application/json',...(token?{authorization:'Bearer '+token}:{})},body:JSON.stringify(body)});
   const tokenRequest=body=>edge.fetch(origin+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   const rpc=async(token,name,args)=>{const res=await edgePost('/mcp',{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}},token);return res.json();};
@@ -90,6 +107,37 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'Synthetic b shared'})).error,'course_not_found_or_not_authorized');
     assert.equal(value(await rpc(b.tokens.access_token,'study_get_receipt',{operation_id:packet.operation_id})).error,'receipt_not_found');
   });
+  await t.test('source gaps are separate from learner errors; assistance cannot be relabeled',async()=>{
+    const missing={criterion:'Purpose absent from material',verdict:'source_not_covered',evidence_quote:'',reason:'The selected excerpt does not explain this purpose.'};
+    const update={...packet,operation_id:'pilot-source-gap',expected_revision:1,assistance:'hints',criteria:[...packet.criteria,missing]};
+    const saved=value(await rpc(a.tokens.access_token,'study_save_checkpoint',update));assert.equal(saved.ok,true,JSON.stringify(saved));
+    assert.equal(saved.record.assessment.outcome,'source_limited');assert.equal(saved.record.assessment.covered_criteria_outcome,'supported_response');assert.equal(saved.record.assessment.mastery,false);
+    const downgrade={...update,operation_id:'pilot-downgrade',expected_revision:2,assistance:'independent',response:'I insist this was independent.'};
+    downgrade.criteria=[missing];
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',downgrade)).error,'assistance_downgrade_requires_new_session');
+    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared',scope:'test'})).revision,2);
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',update)).replayed,true);
+    // A new question/assessment can start a separate session without erasing prior help.
+    const separate={...downgrade,operation_id:'pilot-new-assessment',expected_revision:0,session_id:'new-assessment',question:'New synthetic question not covered by this excerpt.'};
+    const fresh=value(await rpc(a.tokens.access_token,'study_save_checkpoint',separate));assert.equal(fresh.ok,true);assert.equal(fresh.record.assessment.covered_criteria_outcome,'unassessed');
+    const mixed={...update,operation_id:'pilot-mixed',expected_revision:2,criteria:[{...packet.criteria[0],verdict:'not_met',reason:'Synthetic deliberate incorrect reasoning for contract testing.'},missing]};
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',mixed)).record.assessment.covered_criteria_outcome,'incorrect');
+    const worked={...mixed,operation_id:'pilot-worked',expected_revision:3,assistance:'worked_example'};
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',worked)).ok,true);
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',{...mixed,operation_id:'pilot-worked-downgrade',expected_revision:4})).error,'assistance_downgrade_requires_new_session');
+    assert.equal(value(await rpc(b.tokens.access_token,'study_get_receipt',{operation_id:update.operation_id})).error,'receipt_not_found');
+  });
+  await t.test('restart preserves consent, saves, exact retry recovery and fresh-client resume',async()=>{
+    const authFixture=rt.authFixture;
+    await rt.close();rt=await createRuntime({connector:true,persistPath,authFixture});edge=await rt.mf.getWorker('study-connector-test');
+    const resumed=value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared',session_id:'synthetic-session'}));
+    assert.equal(resumed.revision,4);assert.equal(resumed.record.assistance,'worked_example');assert.equal(resumed.source_check.status,'current');
+    assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',packet)).replayed,true);
+    assert.deepEqual((await site('/api/study?course_id=shared&session_id=synthetic-session')).record,resumed.record);
+    assert.equal((await site('/api/study?course_id=shared')).record,null);
+    assert.equal((await site('/api/daily')).counts.overdue,1);
+    assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_id:'shared',scope:'test'})).record,null);
+  });
   await t.test('read-only consent denies writes even when client requested both scopes',async()=>{
     const ro=await authorize('a',false);
     assert.equal(value(await rpc(ro.tokens.access_token,'study_save_checkpoint',packet)).error,'study_write_permission_required');
@@ -107,6 +155,13 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     assert.equal((await rpc(a.tokens.access_token,'study_save_checkpoint',packet)).error.message,'connector_access_revoked');
     const refresh=await tokenRequest({grant_type:'refresh_token',client_id:client.client_id,refresh_token:a.tokens.refresh_token,resource});assert.equal(refresh.status,400);
     assert.equal(value(await rpc(b.tokens.access_token,'study_list_courses',{})).records[0].section,'b');
+  });
+  await t.test('new consent reconnects to the same saved session without reviving old access',async()=>{
+    const reconnected=await authorize();
+    assert.equal(value(await rpc(reconnected.tokens.access_token,'study_resume',{course_id:'shared',session_id:'synthetic-session'})).revision,4);
+    const retired=await rpc(a.tokens.access_token,'study_resume',{course_id:'shared'});
+    assert.ok(retired.error==='invalid_token'||retired.error?.message==='connector_access_revoked',JSON.stringify(retired));
+    assert.equal(retired.result,undefined);
   });
   await t.test('deleting an account immediately retires its delegated access',async()=>{
     const exp=await site('/api/account/export',{student:'b'});

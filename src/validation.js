@@ -76,9 +76,9 @@ export function validateWrite(op, data) {
       if(!Array.isArray(data.criteria)||data.criteria.length>6)fail('invalid_study_criteria');
       const criteria=data.criteria.map(c=>{
         object(c,['criterion','verdict','evidence_quote','reason']);
-        const value={criterion:string(c.criterion,300),verdict:enumeration(c.verdict,['met','partial','not_met','not_evidenced']),evidence_quote:string(c.evidence_quote,1000,{empty:true,multiline:true}),reason:string(c.reason,600,{multiline:true})};
+        const value={criterion:string(c.criterion,300),verdict:enumeration(c.verdict,['met','partial','not_met','not_evidenced','source_not_covered']),evidence_quote:string(c.evidence_quote,1000,{empty:true,multiline:true}),reason:string(c.reason,600,{multiline:true})};
         if(value.evidence_quote&&!response.includes(value.evidence_quote))fail('response_evidence_mismatch');
-        if(value.verdict!=='not_evidenced'&&!value.evidence_quote.trim())fail('response_evidence_required');
+        if(!['not_evidenced','source_not_covered'].includes(value.verdict)&&!value.evidence_quote.trim())fail('response_evidence_required');
         return value;
       });
       if(new Set(criteria.map(c=>c.criterion.trim().toLowerCase())).size!==criteria.length)fail('duplicate_criterion');

@@ -22,6 +22,12 @@ The Tutor page reads the same checkpoint and displays its response, feedback and
 
 The existing transaction saves checkpoint, receipt and account revision together. Exact retries recover the original result even after a source changes. Changed packets with the same ID conflict; stale revisions fail. A process restart preserves the checkpoint. Account deletion removes current records and historical receipts. Checkpoint snapshots remain accessible in account exports until deletion, as do existing record histories.
 
+## Source coverage and assistance integrity
+
+Use criterion verdict `source_not_covered` when the retrieved material cannot support assessing that criterion. The reason must explain the source limitation; no learner quote is required for this verdict. This differs from `not_evidenced`, where source coverage exists but the learner has not provided the needed reasoning. The server returns `assessment.outcome: source_limited` and `covered_criteria_outcome` for the remaining criteria. Covered wrong answers remain visible, and missing source content creates neither mastery nor an invented learner error. Correct semantic classification still depends on the assistant.
+
+`assistance` records the highest help used in a saved session: independent, hints, worked_example. It may increase but cannot decrease on a later revision (`assistance_downgrade_requires_new_session`). Rewording the response does not bypass this rule. Start a separate session with a new unaided question for a genuinely independent assessment, preserving the earlier assisted session. Exact-operation receipt recovery precedes this check, so historical retries remain valid. No old checkpoint is automatically regraded.
+
 ## Course identity lookup
 
 `study_resume` accepts either an opaque `course_id` or an exact course code/title in `course_query`, plus optional exact `term_id` and `section` filters. It searches only the caller's already-authorized course list, follows bounded pagination and refuses incomplete coverage. One exact match returns the checkpoint and `resolved_course.id` for subsequent source reads and saves. Repeated codes across terms/sections return `course_ambiguous` with only authorized course metadata; no checkpoint is selected. Unknown and unauthorized names share the same error. No fuzzy matching or implicit current-term preference is used. Older clients that put a code in `course_id` get the same unique-match resolution; actual opaque IDs take precedence. Other tools and all saves still require exact IDs.
