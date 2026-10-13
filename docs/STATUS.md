@@ -2,6 +2,14 @@
 
 Status date: October 13, 2026.
 
+## Website-to-Claude continuation — live simulated check, October 13, 2026
+
+The deployed website's prepared continuation was pasted unchanged into a fresh Claude chat, with explicit test/tool restrictions appended. Claude requested the exact course, named session and `scope: test`, retrieved revision 1, identified its prior error and asked the saved follow-up without revealing the answer or writing. One authorized fictional response was then saved to that same test session at revision 2; the separate operation receipt, exact-session readback and independent website display agreed. Claude caught the response's remaining incorrect reasoning and missing quotation, recorded assistance as hints and retained test-only status rather than granting learning credit.
+
+Normal website view still returned no non-test checkpoint for the test course, native practice totals remained unchanged, and the other signed-in workspace retained its original course and zero practice counts. The temporary course-specific grant was revoked afterward. No actual coursework, source material or personal Bridge record was modified; no website inference or paid API call was used. Private evidence stays outside Git.
+
+Limit: the first resume relied on saved source snapshots and did not independently refresh current material versions. An explicit reminder in the second message led to a fresh metadata check and versioned passage read before assessment/save. Therefore session selection and save-back passed, while unprompted source-freshness checking remains a follow-up. This is one bounded live continuation, not a new broad grading or security benchmark.
+
 ## Everyday study resume — October 13, 2026
 
 Default website and connector resume now exclude test checkpoints. A newer simulation can no longer displace a normal study continuation; an explicit test view or named test session is required to retrieve simulations. The Tutor page has a reviewable Claude continuation prompt tied to the exact course/session and scope, without embedding material text or responses or sending anything automatically. Switching the view clears the prepared prompt; reload and course/account changes return to normal study. Settings now distinguishes the Claude private pilot from the other providers' manual handoffs.
