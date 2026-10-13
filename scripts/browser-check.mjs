@@ -16,13 +16,14 @@ const profile=await mkdtemp(join(tmpdir(),'school-bridge-synthetic-browser-'));
 const port=process.env.DEMO_PORT || '8767';const root=`http://127.0.0.1:${port}`;
 const demo=spawn('npm',['run','demo'],{cwd:repository,env:{...process.env,DEMO_PORT:port,DEMO_DEPLOYMENT_BUNDLE:'1',DEMO_SCHOOL_FEEDS:'1'},stdio:['ignore','pipe','pipe'],detached:true});
 let demoLog='';demo.stdout.on('data',b=>demoLog+=b);demo.stderr.on('data',b=>demoLog+=b);
-let context,page;const errors=[];const passed=[];
-const ready=()=>page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));
+let context,page,preferredPath=null;const errors=[];const passed=[];
+const ready=async()=>{await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('ready') || document.querySelector('#notice').textContent.includes('This workspace was deleted.'));if(preferredPath)await go(preferredPath);};
+async function go(path){preferredPath=path;if(new URL(page.url()).pathname===path)return;if(path==='/onboarding/courses'&&!await page.locator('#onboarding-nav').isVisible())await page.locator('.workspace-nav a[href="/onboarding/profile"]').click();await page.locator('nav a[href="'+path+'"]').first().click();await page.waitForURL(root+path);}
 const settled=()=>page.waitForFunction(()=>![...document.querySelectorAll('form button')].some(b=>b.disabled));
 const snapshot=()=>page.evaluate(async()=>{const data=await (await fetch('/api/account/export')).json();delete data.exported_at;return data;});
 const stored=()=>page.evaluate(()=>Object.keys(localStorage).filter(k=>k.startsWith('school-bridge-outbox-v1:')).map(k=>JSON.parse(localStorage.getItem(k))));
 async function launch(){context=await chromium.launchPersistentContext(profile,{executablePath:process.env.BROWSER_EXECUTABLE || '/usr/bin/chromium',headless:true,acceptDownloads:true,args:['--no-sandbox']});page=context.pages()[0];page.on('pageerror',e=>errors.push(e.message));await page.goto(root);await ready();}
-async function submit(id,values){for(const [key,value] of Object.entries(values))await page.locator(`${id} [name="${key}"]`).fill(value);await page.locator(id).evaluate(form=>{form.requestSubmit();form.requestSubmit();});await settled();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved and verified'));}
+async function submit(id,values){await go({'#profile-form':'/onboarding/profile','#course-form':'/onboarding/courses','#connection-form':'/onboarding/connections','#material-form':'/notes'}[id]);for(const [key,value] of Object.entries(values))await page.locator(`${id} [name="${key}"]`).fill(value);await page.locator(id).evaluate(form=>{form.requestSubmit();form.requestSubmit();});await settled();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved and verified'));}
 async function reconcile(){await page.locator('#reconcile').click();await page.waitForFunction(()=>!document.querySelector('#reconcile').disabled && document.querySelector('#recovery').hidden);}
 try{
  for(let attempt=0;attempt<100;attempt++){if(demo.exitCode!==null)throw new Error(demoLog);try{if(demoLog.includes('Synthetic-only School Bridge: '+root) && (await fetch(root+'/health')).ok)break;}catch{}if(attempt===99)throw new Error('Synthetic demo startup timed out');await new Promise(r=>setTimeout(r,100));}
@@ -30,19 +31,37 @@ try{
  for(const target of ['#calendar-today-status','#calendar-setup-status']){assert.match(await page.locator(target).innerText(),/Google Calendar setup pending/);assert.equal(await page.locator(target+' [data-calendar-stage=setup_pending]').count(),1);}
  await page.screenshot({path:join(evidence,'calendar-operator-setup-pending.png'),fullPage:true});
  passed.push('calendar setup remains visible in Today and Sources with disabled Google and empty workspace');
+ assert.equal(new URL(page.url()).pathname,'/onboarding/profile');assert.equal(await page.locator('#daily').isVisible(),false);assert.equal(await page.locator('#material-form').isVisible(),false);
+ const beforeDemo=await snapshot();await page.getByRole('link',{name:'Try the sample walkthrough',exact:true}).click();
+ for(const title of ['1 · Your profile','2 · Your courses','3 · Your connections']){assert.equal(await page.locator('#demo-title').innerText(),title);await page.locator('#demo-next').click();}
+ assert.deepEqual(await snapshot(),beforeDemo);await page.screenshot({path:join(evidence,'onboarding-demo.png'),fullPage:true});
+ await go('/notes');assert.equal(await page.locator('#materials').isVisible(),true);assert.equal(await page.locator('#setup').isVisible(),false);
+ await page.goBack();assert.equal(new URL(page.url()).pathname,'/onboarding/demo');await page.goForward();assert.equal(new URL(page.url()).pathname,'/notes');
+ await page.reload();await ready();assert.equal(new URL(page.url()).pathname,'/notes');assert.equal(await page.locator('#materials').isVisible(),true);
+ await page.goto(root+'/?calendar=connected');preferredPath=null;await ready();assert.equal(new URL(page.url()).pathname,'/onboarding/connections');
+ await page.goto(root+'/#daily');await ready();assert.equal(new URL(page.url()).pathname,'/dashboard');
+ await go('/learning');assert.equal(await page.locator('#learning-page').isVisible(),true);await go('/tutor');assert.match(await page.locator('#tutor-page').innerText(),/Not connected yet/);
+ await go('/onboarding/profile');
+ passed.push('separate page routes, first-run onboarding, inert sample walkthrough, browser back/forward, deep-link reload, legacy links and Google return route');
  await page.locator('#profile-form [name=consent]').check();await submit('#profile-form',{display_name:'Synthetic Student A',timezone:'America/New_York'});
  await submit('#course-form',{code:'SYN 101',title:'Synthetic course',section:'A',term_id:'fall-2026'});
  await submit('#connection-form',{site_url:'https://school.example.invalid'});
  assert.match(await page.locator('#connections').innerText(),/Needs authorization/);
  const course=await page.locator('#material-form [name=course_id] option').nth(1).getAttribute('value');
  const source=await page.locator('#source-select option').nth(1).getAttribute('value');
+ const seeded=await page.evaluate(async course=>{const owner=(await(await fetch('/api/onboarding')).json()).workspace_id;return (await fetch('/api/learning',{method:'PUT',headers:{'Content-Type':'application/json','X-Workspace-Id':owner},body:JSON.stringify({operation_id:'synthetic_learning_page',expected_revision:0,course_id:course,session_id:'synthetic_session',resume:'Review the missed inventory question before continuing.',observations:[{topic_id:'inventory',outcome:'incorrect',assistance:'independent',evidence:'observed_response',next_step:'Try a simpler practice question.'}]})})).status;},course);assert.equal(seeded,200);
+ await go('/learning');await page.locator('#learning-course').selectOption(course);await page.locator('#learning-load').click();await page.waitForFunction(()=>document.querySelector('#learning-handoff').textContent.includes('missed inventory question'));assert.match(await page.locator('#learning-handoff').innerText(),/0 independently correct/);assert.match(await page.locator('#learning-handoff').innerText(),/1 incorrect/);
+ await page.screenshot({path:join(evidence,'learning-page.png'),fullPage:true});
+ await page.setViewportSize({width:390,height:844});await go('/dashboard');assert.equal(await page.locator('#setup').isVisible(),false);assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);await page.screenshot({path:join(evidence,'dashboard-mobile.png'),fullPage:true});await page.setViewportSize({width:1280,height:720});
+ passed.push('Learning reads actual saved evidence without upgrading incorrect answers; mobile dashboard hides setup and fits the viewport');
+ await go('/onboarding/connections');
  // Actual synthetic backend: course feed consent, alarm collection, submission and fresh-chat-style reload.
  await page.locator('#school-feed-form [name=course_id]').selectOption(course);
  await page.locator('#school-feed-form [name=feed_url]').fill('https://uga.view.usg.edu/d2l/le/calendar/feed/user/feed.ics?token=synthetic_browser_feed');
  await page.locator('#school-feed-form [name=consent]').check();await page.locator('#school-feed-form button').click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Course feed saved'));
  for(let n=0;n<50;n++){const ready=await page.evaluate(async()=>{const data=await(await fetch('/api/daily')).json();return data.counts.overdue===1;});if(ready)break;if(n===49)throw new Error('Synthetic feed was not collected');await new Promise(r=>setTimeout(r,200));}
- await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#daily-groups').textContent.includes('Synthetic feed exercise due'));
+ await go('/dashboard');await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#daily-groups').textContent.includes('Synthetic feed exercise due'));
  await page.getByRole('button',{name:'Save as submitted',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Confirm that you submitted'));
  assert.equal((await snapshot()).data.progress.length,0);
  await page.getByRole('checkbox',{name:'I submitted this requirement.',exact:true}).check();await page.getByRole('button',{name:'Save as submitted',exact:true}).click();
@@ -51,6 +70,7 @@ try{
  assert.doesNotMatch(JSON.stringify(await stored()),/synthetic_browser_feed|feed_url/);assert.doesNotMatch(JSON.stringify(await snapshot()),/synthetic_browser_feed|ciphertext|feed_url/);
  await page.screenshot({path:join(evidence,'daily-school-dashboard.png'),fullPage:true});
  passed.push('actual feed UI: explicit consent, server alarm collection, submitted-work confirmation, private URL exclusion and completed status after reload');
+ await go('/onboarding/connections');
  // Render the opt-in consent UI with synthetic route responses. Backend
  // callback/credential behavior is separately tested against actual workerd.
  let googleState={connection_id:source,revision:0,status:'needs_authorization',authorized:false,generation:1,live_sync:false,last_successful_sync:null};
@@ -164,7 +184,7 @@ try{
  const calendarDate=offset=>new Date(Date.now()+7*86400000+offset).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}Z/,'Z');
  const ics=title=>`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-event\r\nDTSTART:${calendarDate(0)}\r\nDTEND:${calendarDate(3600000)}\r\nSUMMARY:${title}\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`;
  for(const title of ['Synthetic first event','Synthetic replacement event']){
-  await page.locator('#calendar-form [name=course_id]').selectOption(course);await page.locator('#source-select').selectOption(source);
+  await go('/onboarding/connections');await page.locator('#calendar-form [name=course_id]').selectOption(course);await page.locator('#source-select').selectOption(source);
   await page.locator('#calendar-form [name=ics]').setInputFiles({name:'synthetic.ics',mimeType:'text/calendar',buffer:Buffer.from(ics(title))});
   await page.locator('#calendar-form button').click();await settled();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved and verified'));
  }
@@ -173,7 +193,7 @@ try{
  // Server committed; deliberately drop the response, then close the whole browser.
  let committedPacket;
  await page.route('**/api/materials',async route=>{if(route.request().method()==='PUT'){committedPacket=route.request().postDataJSON();await route.fetch();await route.abort('failed');}else await route.continue();});
- await page.locator('#material-form [name=course_id]').selectOption(course);
+ await go('/notes');await page.locator('#material-form [name=course_id]').selectOption(course);
  await page.locator('#material-form [name=title]').fill('Synthetic notes');await page.locator('#material-form [name=text]').fill('Disposable synthetic material A.');
  await page.locator('#material-form button').click();await settled();assert.equal((await stored()).length,1);
  await context.close();await launch();assert.equal((await stored())[0].intents[0].packet.operation_id,committedPacket.operation_id);
@@ -184,7 +204,7 @@ try{
  // Request never reached storage. Preserve the packet across identity changes.
  await page.unroute('**/api/materials');let originalPacket;
  await page.route('**/api/materials',async route=>{if(route.request().method()==='PUT'){originalPacket=route.request().postDataJSON();await route.abort('failed');}else await route.continue();});
- await page.locator('#material-form [name=course_id]').selectOption(course);await page.locator('#material-form [name=title]').fill('Reconnect notes');await page.locator('#material-form [name=text]').fill('Synthetic pending content.');
+ await go('/notes');await page.locator('#material-form [name=course_id]').selectOption(course);await page.locator('#material-form [name=title]').fill('Reconnect notes');await page.locator('#material-form [name=text]').fill('Synthetic pending content.');
  await page.locator('#material-form button').click();await settled();const pendingA=await stored();assert.equal(pendingA.length,1);
  await page.getByRole('link',{name:'Student B',exact:true}).click();await ready();assert.equal((await snapshot()).account_revision,0);assert.equal(await page.locator('#material-list .row').count(),0);assert.equal(await page.locator('#recovery').isVisible(),false);assert.deepEqual(await stored(),pendingA);
  await submit('#course-form',{code:'SYN 202',title:'Student B only',section:'B',term_id:'fall-2026'});const bSaved=await snapshot();
@@ -196,7 +216,7 @@ try{
  passed.push('A/B separation, hidden foreign outbox, explicit reconnect and exact missing-receipt replay');
  // Another tab changes the identity cookie. The stale A tab must not write to B.
  const other=await context.newPage();await other.goto(root+'/__demo/student/b');
- await page.locator('#course-form [name=code]').fill('STALE');await page.locator('#course-form [name=title]').fill('Must not save');await page.locator('#course-form [name=section]').fill('A');await page.locator('#course-form [name=term_id]').fill('fall-2026');
+ await go('/onboarding/courses');await page.locator('#course-form [name=code]').fill('STALE');await page.locator('#course-form [name=title]').fill('Must not save');await page.locator('#course-form [name=section]').fill('A');await page.locator('#course-form [name=term_id]').fill('fall-2026');
  await page.locator('#course-form button').click();await settled();assert.match(await page.locator('#notice').innerText(),/sign-in changed/);assert.deepEqual(await snapshot(),bSaved);
  await other.goto(root+'/__demo/student/a');await other.close();await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#notice').textContent==='Workspace refreshed.');
  passed.push('stale account tab rejected by server workspace guard');
@@ -214,7 +234,7 @@ try{
  await page.unroute('**/api/materials');await switching.goto(root+'/__demo/student/a');await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#welcome').textContent==='Welcome, Synthetic Student A' && document.querySelector('#notice').textContent==='Workspace refreshed.');
  // Capture calendar identity before every asynchronous file/read preparation step.
  await page.evaluate(()=>{const text=File.prototype.text;File.prototype.text=async function(){window.qaFileWaiting=true;await new Promise(r=>window.qaReleaseFile=r);return text.call(this);};});
- await page.locator('#calendar-form [name=course_id]').selectOption(course);await page.locator('#source-select').selectOption(source);
+ await go('/onboarding/connections');await page.locator('#calendar-form [name=course_id]').selectOption(course);await page.locator('#source-select').selectOption(source);
  await page.locator('#calendar-form [name=ics]').setInputFiles({name:'synthetic.ics',mimeType:'text/calendar',buffer:Buffer.from(ics('Must not reach B'))});
  const calendarAttempts=[];await page.route('**/api/calendar/import',async route=>{calendarAttempts.push(route.request().postDataJSON());await route.continue();});
  await page.locator('#calendar-form button').click();await page.waitForFunction(()=>window.qaFileWaiting===true);
@@ -225,7 +245,7 @@ try{
  await page.locator('#refresh').click();await page.waitForFunction(()=>document.querySelector('#welcome').textContent==='Welcome, Synthetic Student A' && document.querySelector('#notice').textContent==='Workspace refreshed.');
 
  await page.screenshot({path:join(evidence,'student-a.png'),fullPage:true});
- const exportPromise=page.waitForEvent('download');await page.locator('#export').click();const download=await exportPromise;await download.saveAs(join(evidence,'synthetic-export.json'));const exported=JSON.parse(await readFile(join(evidence,'synthetic-export.json'),'utf8'));assert.equal(exported.data.materials.length,2);
+ await go('/settings');const exportPromise=page.waitForEvent('download');await page.locator('#export').click();const download=await exportPromise;await download.saveAs(join(evidence,'synthetic-export.json'));const exported=JSON.parse(await readFile(join(evidence,'synthetic-export.json'),'utf8'));assert.equal(exported.data.materials.length,2);
  passed.push('rendered export downloads current workspace');
  // An export response for A must not download after the current tab refreshes B.
  let releaseExport,exportHeld;const exportGate=new Promise(r=>releaseExport=r);const exportStarted=new Promise(r=>exportHeld=r);let holdExport=true;const unexpectedDownloads=[];
@@ -240,7 +260,7 @@ try{
 
  // Delete succeeds server-side, but its response is lost. Restart and recover.
  await page.route('**/api/account',async route=>{if(route.request().method()==='DELETE'){await route.fetch();await route.abort('failed');}else await route.continue();});
- await page.locator('#privacy summary').click();await page.locator('#delete-confirm').fill('DELETE_MY_WORKSPACE');await page.locator('#delete').click();await page.waitForFunction(()=>!document.querySelector('#delete').disabled);assert.equal((await stored()).length,1);
+ await go('/settings');await page.locator('#privacy summary').click();await page.locator('#delete-confirm').fill('DELETE_MY_WORKSPACE');await page.locator('#delete').click();await page.waitForFunction(()=>!document.querySelector('#delete').disabled);assert.equal((await stored()).length,1);
  await context.close();await launch();await reconcile();assert.equal((await snapshot()).deleted,true);assert.equal((await stored()).length,0);
  await page.getByRole('link',{name:'Student B',exact:true}).click();await ready();assert.deepEqual(await snapshot(),bSaved);
  passed.push('lost deletion response + browser restart: deletion receipt recovery, local cleanup, B unchanged');

@@ -16,6 +16,14 @@ Verification: the full check passed 312 tests, privacy/plugin gates, Worker buil
 
 Limits: no real student feed was imported for this milestone. The implementation has been exercised with synthetic UGA-format fixtures; live eLC format and coverage still require a student's fresh opt-in subscription. No personal Bridge data, feed URLs, credentials, course list, schedules or collectors were copied. Full authenticated eLC materials/submission collection, Drive synchronization, date-conflict resolution, automatic reminders and website teaching remain separate work. Google Calendar's existing agenda stays separate; events are not silently treated as assignments or duplicated into deadline counts.
 
+## Separate workspace pages and onboarding — October 13, 2026
+
+The website now separates day-to-day use into `/dashboard`, `/notes`, `/learning`, `/tutor` and `/calendar`. Profile, course and connection setup have independent `/onboarding/` routes; data controls and optional-tool information live in `/settings`. Each route displays only its own section, supports direct loading, and preserves browser back/forward navigation. Existing section links and Google authorization returns route to the correct page. New root visits begin at profile setup when no profile is saved, otherwise at the dashboard. Setup remains available later, and optional connections never block the dashboard.
+
+`/onboarding/demo` is a three-step fictional walkthrough with no save or authorization actions. Actual setup uses the existing per-student forms and save-recovery contracts. The Learning page reads saved study preferences and per-course learning handoffs, keeping incorrect/partial/assisted observations explicit. The Tutor page is an honest preparation page: no chat, model calls or AI teaching is represented as working.
+
+Validation: all 312 automated tests passed. Rendered Chrome passed 21 scenarios with zero page errors, including first-run routing, a no-write onboarding demo, direct reload, browser back/forward, legacy section links, Google return routing, saved incorrect learning evidence and a 390-pixel mobile layout. Privacy scanning and the final Worker artifact check passed. Private deployment version `8c88c0b1-cdca-49f4-92cb-31417b717b30` was verified in the signed-in second test workspace: Dashboard hides setup, Setup has its own URL, and the sample walkthrough is visible without a write. No student records were migrated or copied, and source collection, permissions and private hosting boundaries are unchanged.
+
 ## Implemented
 
 | Area | Current behavior |

@@ -33,7 +33,7 @@ const server = createServer(async (req, res) => {
       method: req.method, headers, ...(!['GET','HEAD'].includes(req.method) ? { body: Buffer.concat(chunks) } : {}),
     });
     let body = Buffer.from(await response.arrayBuffer());
-    if (url.pathname === '/' && response.status === 200) {
+    if (response.headers.get('content-type')?.includes('text/html') && response.status === 200) {
       const banner = `<aside class="demo-banner">LOCAL SIMULATION · Student ${student.toUpperCase()} · Disposable synthetic data only. <a href="/__demo/student/a">Student A</a> · <a href="/__demo/student/b">Student B</a></aside>`;
       body = Buffer.from(body.toString().replace('<body>', '<body>' + banner));
     }

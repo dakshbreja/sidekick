@@ -1,3 +1,4 @@
+import {APP_PATHS} from './workspace-pages.js';
 import {schoolFeedsEnabled} from './school-feed.js';
 import {authenticate} from './auth.js';
 import {HttpError,json,readJSON,mutationOrigin,queryData,writePacket} from './http.js';
@@ -30,7 +31,7 @@ export default {
   async fetch(request,env) {
     const url=new URL(request.url),path=url.pathname;
     try {
-      if(request.method==='GET' && path==='/') return staticResponse(PAGE,'text/html; charset=utf-8');
+      if(request.method==='GET' && APP_PATHS.includes(path)) return staticResponse(PAGE,'text/html; charset=utf-8');
       if(request.method==='GET' && path==='/client.js') return staticResponse(CLIENT_SCRIPT,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/write-intent.js') return staticResponse(WRITE_MODULE,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/text-import.js') return staticResponse(TEXT_IMPORT_MODULE,'text/javascript; charset=utf-8');
