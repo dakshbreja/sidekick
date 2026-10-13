@@ -2,6 +2,20 @@
 
 Status date: October 13, 2026.
 
+## Live Claude changed/unavailable-source simulation — October 13, 2026
+
+A new disposable synthetic course and test-only session exercised the deployed source check. After seeding revision 1, the source buffer was changed from five units to eight. A fresh Claude chat received only course/session identity and a resume request, with no version-check reminder or updated answer. It detected `source_check: changed`, read current revision 2 starting at zero before teaching, identified the changed buffer and preserved the historical response without regrading it. A subsequent fictional answer saved to the same test session at checkpoint revision 2 with source revision 2. Actual operation receipt, exact-session readback and independent website display agreed; assistance was hints, assessment unverified and mastery false. Native practice totals stayed zero.
+
+The sole synthetic source was then archived reversibly. Another fresh chat received the same minimal resume request. It saw `source_check: unavailable`, checked material metadata, explained why it could not continue from the historical excerpt, asked for restored/replacement material, and made no checkpoint save. This is a live unavailable-source test through archive, not physical deletion; missing/deleted records remain covered by deterministic tests. After restoration, Claude read revision 4 from the beginning before continuing, without regrading or saving again. The temporary grant was then visibly revoked and the website returned to normal study view. No actual coursework or personal Bridge record was accessed or changed. The second signed-in workspace retained its courses, normal empty checkpoint view and earlier practice totals. Private evidence stays outside Git.
+
+Limit: these are bounded source-handling and save tests, not a general teaching-quality guarantee. The synthetic note requests a buffer-purpose explanation but does not provide it; Claude labeled the answer partial while acknowledging that source limitation. Its assessment should remain an unverified report, not verified understanding.
+
+## Material editing and reversible teaching withdrawal — October 13, 2026
+
+The Notes page now updates existing material through the current revision, owner and durable receipt/recovery contract. Course identity remains immutable. Archiving is reversible and makes a source unavailable for new connector passage reads, checkpoint saves and website tutor inference; it also removes it from tutor selection and checks manual handoffs again before copying. Historical snapshots and owner library reads remain for review. Restoring creates another revision that must be reread. No content already sent to an assistant is recalled. No administrative bypass, new grant or deletion endpoint was added.
+
+All 354 automated checks passed, including actual Worker archive/restore, historical replay, new-save denial, second-owner separation and a no-inference-while-archived check. Build, executable bundle and private-reference scan passed. Disposable browser checks verified edit, archive and unavailable-source display. Deployed to the existing private community pilot for the authorized live simulation. Only fictional material is edited during that evaluation.
+
 ## Automatic source checks on resume — October 13, 2026
 
 Every website/connector study resume now compares all saved source revisions, course ownership, passage bounds and exact text with current materials in the same student store. The response includes a read-only `source_check`: current, changed, unavailable or no checkpoint. Changed/missing sources cannot be represented as current; instructions require reading updated material from the beginning or selecting an available source before teaching/assessment. Historical checkpoints remain unchanged. The website displays the result and its prepared Claude continuation explicitly handles it. This closes the server-side version-check gap observed below without depending on an extra learner reminder.

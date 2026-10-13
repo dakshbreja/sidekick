@@ -40,6 +40,12 @@ Changed sources require a fresh material read at the returned current revision, 
 
 For a disposable changed-source browser fixture, run `DEMO_STUDY=1 DEMO_STUDY_CHANGED=1 DEMO_PORT=8774 node scripts/demo.mjs`. Open Student A's Tutor page and enable simulation checkpoints. Its saved five-unit buffer excerpt stays historical while the current material has an eight-unit buffer. Student B has no checkpoint. No real materials or model calls are used.
 
+## Reversible material editing and archiving
+
+The Notes page can edit a material using its current revision and the existing durable save/receipt queue. Course identity stays immutable. The optional boolean `archived` marks a material unavailable for new teaching; owner library reads and historical checkpoints remain available for review. Connector metadata exposes the archive state, while passage reads and new checkpoint source validation reject archived materials. Website material selection excludes them, manual handoffs recheck their current state, and new tutor inference rejects them before calling a provider. Existing revision fencing also prevents a model reply from saving after its source is archived during inference.
+
+Restore by clearing the archive checkbox. Both archive and restore create a new revision, so a historical checkpoint requires a current read before continuation. Exact retries still recover original receipts. This is reversible withdrawal from teaching, not erasure or recall of content already sent to a provider. No deletion endpoint or administrative test bypass was added.
+
 ## Local interfaces
 
 - `GET /api/study?course_id=...&session_id=...` (session and scope optional): resume through the normal authenticated website boundary.

@@ -219,3 +219,33 @@ test('resume source checks fail closed for missing, wrong-course and inconsisten
   assert.deepEqual(missing.record,saved.record);
   assert.equal((await dispatch('study.receipt',{operation_id:saved.receipt.operation_id})).receipt.revision,1);
 });
+
+test('real Worker material archive blocks new teaching and saves, restores by version, preserves history and other owner',async t=>{
+  const rt=await createRuntime({bindings:{STUDY_CONNECTOR_PREVIEW:'true'}});t.after(()=>rt.close());
+  const owners={};for(const student of ['a','b']){
+    owners[student]=(await(await rt.request('/api/onboarding',{student})).json()).workspace_id;
+    for(const [path,data] of [['/api/courses',{id:'synthetic-course',code:'SYN303',title:'Synthetic archive test',section:'TEST',term_id:'synthetic-term'}],['/api/materials',{id:'synthetic-material',course_id:'synthetic-course',title:'Synthetic notes',text:sourceText,source_kind:'manual'}]]){
+      assert.equal((await rt.request(path,{student,method:'PUT',body:write(data)})).status,200);
+    }
+  }
+  const rpc=async(name,args,student='a')=>(await(await rt.request('/api/study-connector-preview',{student,method:'POST',headers:{'X-Workspace-Id':owners[student]},body:call(name,args)})).json()).result.structuredContent;
+  const seed=write(checkpoint());assert.equal((await rpc('study_save_checkpoint',seed)).ok,true);
+  const change=async(archived,expected_revision)=>{
+    const response=await rt.request('/api/materials',{method:'PUT',body:{...write({id:'synthetic-material',course_id:'synthetic-course',title:'Synthetic notes',text:sourceText,source_kind:'manual',archived}),expected_revision}});
+    return {status:response.status,...await response.json()};
+  };
+  assert.equal((await change('yes',1)).status,400);
+  assert.equal((await change(true,1)).ok,true);
+  const resumed=await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'});
+  assert.equal(resumed.source_check.status,'unavailable');assert.equal(resumed.source_check.can_use_saved_sources,false);assert.equal(resumed.record.revision,1);
+  assert.equal((await rpc('study_list_materials',{course_id:'synthetic-course'})).records[0].archived,true);
+  assert.equal((await rpc('study_read_material',{course_id:'synthetic-course',material_id:'synthetic-material',revision:2})).error,'material_not_found');
+  assert.equal((await rpc('study_save_checkpoint',{...write(checkpoint()),session_id:'another',sources:[{material_id:'synthetic-material',revision:2,start:0,end:sourceText.length}]})).error,'material_not_found');
+  assert.equal((await rpc('study_read_material',{course_id:'synthetic-course',material_id:'synthetic-material',revision:1},'b')).text,sourceText);
+  assert.equal((await change(false,2)).ok,true);
+  assert.equal((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).source_check.status,'changed');
+  assert.equal((await rpc('study_read_material',{course_id:'synthetic-course',material_id:'synthetic-material',revision:3})).text,sourceText);
+  assert.equal((await rpc('study_save_checkpoint',seed)).replayed,true);
+  const restored=await rpc('study_save_checkpoint',{...write(checkpoint()),expected_revision:1,sources:[{material_id:'synthetic-material',revision:3,start:0,end:sourceText.length}]});
+  assert.equal(restored.ok,true);assert.equal(restored.record.revision,2);
+});

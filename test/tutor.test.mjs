@@ -70,3 +70,5 @@ test('short source extracts stay intact while retrieval remains byte-bounded',()
  assert.equal(decodeTutorResponse(providerLesson(lesson),sources).quote,text);
  const large=selectExcerpts([{...material,revision:1,text:'界'.repeat(20000)}],'界');assert.ok(new TextEncoder().encode(JSON.stringify(large)).length<8000);assert.ok(large.every(s=>s.text.length<=2200));
 });
+
+test('archived sources block new inference without spending quota and remain blocked until restored',async t=>{const x=await unit(t);const write=async(archived,expectedRevision)=>x.store.dispatch({tenantId:tenant,op:'materials.put',data:{...material,archived},operationId:crypto.randomUUID(),expectedRevision});assert.equal((await write(true,1)).ok,true);await assert.rejects(()=>runTutor({...x,tenantId:tenant,data:packet()}),/tutor_material_not_found/);assert.equal(x.calls(),0);assert.equal(x.state.read(tenant,course.id).session.revision,0);assert.equal((await write(false,2)).ok,true);assert.equal((await runTutor({...x,tenantId:tenant,data:packet()})).state,'saved');assert.equal(x.calls(),1);});

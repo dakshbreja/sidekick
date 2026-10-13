@@ -26,7 +26,7 @@ export function readStudy(store, meta, op, data) {
   }
   if(op==='study.material') {
     const record=store.getRecord('materials',data.material_id);
-    if(!record||record.course_id!==data.course_id)fail('material_not_found',404);
+    if(!record||record.archived||record.course_id!==data.course_id)fail('material_not_found',404);
     if(record.revision!==data.revision)fail('source_revision_conflict',409);
     const start=data.start??0,end=Math.min(start+2000,record.text.length);
     if(start>=record.text.length)fail('invalid_source_range');
@@ -45,7 +45,7 @@ export function readStudy(store, meta, op, data) {
 function checkStudySources(store,record,accountRevision) {
   const sources=(record?.sources??[]).map(ref=>{
     const material=store.getRecord('materials',ref.material_id);
-    const available=Boolean(material&&material.course_id===record.course_id);
+    const available=Boolean(material&&!material.archived&&material.course_id===record.course_id);
     const current=available&&material.revision===ref.revision&&ref.end<=material.text.length&&material.text.slice(ref.start,ref.end)===ref.text;
     return {material_id:ref.material_id,saved_revision:ref.revision,current_revision:available?material.revision:null,status:!available?'unavailable':current?'current':'changed'};
   });
@@ -60,7 +60,7 @@ function checkStudySources(store,record,accountRevision) {
 export function prepareStudy(store,value) {
   const sources=value.sources.map(ref=>{
     const material=store.getRecord('materials',ref.material_id);
-    if(!material||material.course_id!==value.course_id)fail('material_not_found',404);
+    if(!material||material.archived||material.course_id!==value.course_id)fail('material_not_found',404);
     if(material.revision!==ref.revision)fail('source_revision_conflict',409);
     if(ref.end>material.text.length)fail('invalid_source_range');
     return {...ref,title:material.title,text:material.text.slice(ref.start,ref.end)};

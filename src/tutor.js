@@ -121,7 +121,7 @@ export class TutorState {
     if(packet.mode==='teach'){
       if(!enabled)fail('tutor_unavailable',409);
       const materials=packet.material_ids.map(id=>this.store.getRecord('materials',id));
-      if(materials.some(m=>!m||m.course_id!==packet.course_id))fail('tutor_material_not_found',404);
+      if(materials.some(m=>!m||m.archived||m.course_id!==packet.course_id))fail('tutor_material_not_found',404);
       const checkpoint=this.store.sql.exec("SELECT body FROM records WHERE kind = 'study_sessions' AND course_id = ? ORDER BY updated_at DESC, id DESC",packet.course_id).toArray().map(r=>JSON.parse(r.body)).find(r=>!r.test_only);
       sources=selectExcerpts(materials,packet.message);messages=tutorPrompt(session,packet.message,sources,checkpoint);
       const day=new Date().toISOString().slice(0,10),calls=this.store.row('SELECT calls FROM tutor_usage WHERE day = ?',day)?.calls||0;

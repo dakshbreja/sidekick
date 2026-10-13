@@ -113,8 +113,9 @@ export function validateWrite(op, data) {
       return { kind: 'courses', id: value.id, value };
     }
     case 'materials.put': {
-      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label']);
+      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label', 'archived']);
       const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 100000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual', 'text_import']) };
+      if (data.archived !== undefined) { if (typeof data.archived !== 'boolean') fail('invalid_archived'); value.archived=data.archived; }
       if (data.material_kind !== undefined) value.material_kind = enumeration(data.material_kind, ['course_text', 'notes', 'transcript']);
       if (data.source_label !== undefined) value.source_label = string(data.source_label, 200, { empty: true });
       return { kind: 'materials', id: value.id, value };
