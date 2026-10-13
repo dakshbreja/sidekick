@@ -35,6 +35,42 @@ test('unconfigured deployment fails closed before accepting any identity', async
     { code: 'auth_not_configured', status: 503 });
 });
 
+test('the same signed subject under another trusted issuer has a distinct workspace', async () => {
+  const a = await verify(fixture.tokens.a);
+  const issuer = 'https://separate-synthetic-team.cloudflareaccess.com';
+  const token = await fixture.signToken({iss:issuer});
+  const other = await verify(token,{...fixture.config,issuer});
+  assert.equal(other.subject,a.subject);
+  assert.notEqual(other.tenantId,a.tenantId);
+});
+
+test('application audience change validates new tokens without silently moving the same subject', async () => {
+  const a = await verify(fixture.tokens.a);
+  const audience = 'synthetic-replacement-application';
+  const config = {...fixture.config,audience};
+  await rejectsIdentity(()=>verify(fixture.tokens.a,config));
+  const token = await fixture.signToken({aud:[audience]});
+  const replacement = await verify(token,config);
+  assert.equal(replacement.tenantId,a.tenantId);
+  await rejectsIdentity(()=>verify(token,fixture.config));
+});
+
+test('cached public keys never cache successful authentication for a later expired assertion', async () => {
+  const remote = await createAuthFixture('https://cached-expiry-synthetic.cloudflareaccess.com');
+  const originalFetch = globalThis.fetch;let keyReads=0;
+  globalThis.fetch = async()=>{keyReads++;return new Response(JSON.stringify(remote.jwks));};
+  const request = token=>new Request('https://community.example.invalid/api/onboarding',{headers:{'Cf-Access-Jwt-Assertion':token}});
+  try {
+    const first = await authenticate(request(remote.tokens.a),remote.env);
+    const now = Math.floor(Date.now()/1000);
+    const expired = await remote.signToken({iat:now-120,nbf:now-120,exp:now-60});
+    await rejectsIdentity(()=>authenticate(request(expired),remote.env));
+    const second = await authenticate(request(remote.tokens.b),remote.env);
+    assert.notEqual(first.tenantId,second.tenantId);
+    assert.equal(keyReads,1,'cached keys must not bypass per-request identity and lifetime checks');
+  } finally {globalThis.fetch=originalFetch;}
+});
+
 test('missing assertion rejects forwarded identity and alternative credentials', async () => {
   const request = new Request('https://community.example.invalid/api/onboarding', { headers: {
     'Cf-Access-Authenticated-User-Email': 'owner@example.invalid', 'X-Tenant-ID': 'victim',

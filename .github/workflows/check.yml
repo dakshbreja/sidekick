@@ -19,6 +19,14 @@ jobs:
         env:
           CI: 'true'
           WRANGLER_SEND_METRICS: 'false'
+      - name: Build private instruction-only test package
+        run: npm run package:plugin -- --output "$RUNNER_TEMP/school-bridge-community-plugin.zip"
+      - name: Retain private test package
+        uses: actions/upload-artifact@v4
+        with:
+          name: school-bridge-plugin-test-package
+          path: ${{ runner.temp }}/school-bridge-community-plugin.zip
+          retention-days: 7
       - name: Locate installed Chromium browser
         run: |
           browser_executable=$(command -v chromium || command -v google-chrome || command -v chromium-browser) || {

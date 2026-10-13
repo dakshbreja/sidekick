@@ -87,6 +87,38 @@ Only synthetic records belong in test fixtures. New runtime stores start empty. 
 
 Deletion removes active records and old save receipts while retaining a minimal tombstone and deletion receipt. Provider point-in-time recovery or backups may retain earlier copies under their own policies. Identity-key rotation requires a migration. See [ARCHITECTURE.md](ARCHITECTURE.md#storage-lifecycle-and-deletion) for the full contract and current limits.
 
+## Private sign-in preparation
+
+The next preparation branch adds [PRIVATE-SIGNIN.md](PRIVATE-SIGNIN.md), a plain-language owner guide, setup decisions and a hosted acceptance checklist. The owner's Cloudflare account readiness is not yet confirmed. No hostname, Access application, provider permission or secret was provisioned by this work.
+
+The synthetic gate passed **158 tests**, privacy scanning and Wrangler dry-run. Three added identity tests check issuer separation for the same subject, audience changes that reject mismatched tokens without moving the subject's workspace, and per-request expiry/identity validation when public signing keys are cached. These are implementation contracts; real Access admission, session revocation and the deployed removal deadline remain unverified. Application behavior is unchanged from the reviewed recovery branch. The new preparation PR depends on that still-unmerged branch.
+
+## OpenAI plugin preparation
+
+[PLUGIN-PLAN.md](PLUGIN-PLAN.md) records official OpenAI migration guidance researched on October 12, 2026 and the community-specific rollout. `plugins/school-bridge-community` contains a proprietary instruction-only manifest plus onboarding and save-recovery skills, freshly authored from this repository's contracts. No personal GPT, conversation, student material or credential was imported. No plugin was installed, published or connected.
+
+The synthetic gate passed **162 tests**, the repository privacy scanner, the new instruction-only package audit and Wrangler dry-run. Four added package tests exercise live-tool/hook rejection, onboarding path confinement, unexpected files/symlinks and honest host-verification status. `npm run check` now includes `npm run check:plugin`. These checks establish package scope; they do not establish OpenAI host acceptance, skill selection, model adherence or faster/cheaper operations. Host tests and comparative task/latency/cost measurements remain pending, as do all live-access and teaching gates.
+
+The sign-in preparation parent independently passed [GitHub Actions run 38308979915](https://github.com/dakshbreja/school-bridge-community/actions/runs/38308979915), including rendered synthetic browser QA. The plugin preparation is a new stacked draft with separate CI results to verify.
+
+## Private plugin tryout package
+
+The owner reports that plugin creation/migration options are visible in ChatGPT. Actual ZIP upload availability, successful installation and model behavior have not yet been verified. [PLUGIN-TRYOUT.md](PLUGIN-TRYOUT.md) explains the private download/upload path, seven short acceptance prompts and an effort/quality/time comparison without collecting student data.
+
+`npm run package:plugin -- --output <external path>` now builds the reviewed four-file instruction package after auditing it. It refuses outputs inside the repository, including symlinked paths, uses a unique temporary file and produces a stable ZIP/checksum. The gate passed **164 tests**, privacy scan, package scope audit and dry-run. Two added archive tests check exact file contents/reproducibility and output confinement. The archive was opened successfully and contained only the manifest, copyright and two skills; this is archive verification, not an OpenAI-host test.
+
+CI now retains `school-bridge-plugin-test-package` privately for seven days alongside the separate synthetic website evidence. It does not install, submit, publish or authorize the package. The owner can download the artifact, extract the inner plugin ZIP and try the supported private upload when available. Host acceptance and efficiency benchmarks remain pending.
+
+## Owner-observed plugin tests and sign-in readiness
+
+Owner-provided screenshots show a private personal School Bridge Community plugin listed as installed, with Save Recovery and Workspace Onboarding enabled. The observed recovery answer directed the user to the original account and receipt-first recovery, did not suggest an immediate duplicate save, and admitted it could not inspect live receipts. The observed fictional-onboarding answer distinguished drafts from saved records and explained source registration honestly. These two manual instruction scenarios behaved as expected; they do not establish backend access, package byte-equivalence, automatic skill selection, complete host validation or efficiency savings. The screenshots contain unrelated personal UI and were not copied into Git or CI artifacts.
+
+The onboarding response referred to a nonexistent “Manual entry” source. Draft package **0.1.1** now names the actual source choices and separates manual material text from calendar file import. The already-created host plugin has not been updated by this session; that requires its supported creator/update flow.
+
+The owner reports being signed in to Cloudflare and owning no custom domain. A built-in Worker address protected with scoped Access is the documented private-test alternative; no purchase is required for that path. This execution environment still has no Cloudflare provider connection or secrets. The actual address, Access application, dedicated settings and test-account policy remain pending. `npm run check:signin` correctly reports the three absent setting names and makes no network requests. It validates format only and never marks identity, policy, hostname or revocation as verified.
+
+The updated gate passed **167 tests**, privacy scanning, plugin scope audit and Wrangler dry-run. Three added preflight tests cover missing names, safe invalid-configuration handling and valid synthetic format without network access or value disclosure. No deployment, provider permission, real sign-in or school authorization was performed.
+
 ## Next milestone
 
 Configure a separately protected deployment, connect one real source through a supported per-student authorization flow, and prove that two consenting students can onboard independently without source edits or shared credentials. Complete the [pilot release gates](ARCHITECTURE.md#pilot-release-gates) before admitting real students; expand automatic collection and teaching after that evidence exists.
