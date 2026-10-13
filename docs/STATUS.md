@@ -2,6 +2,12 @@
 
 Status date: October 13, 2026.
 
+## Everyday study resume — October 13, 2026
+
+Default website and connector resume now exclude test checkpoints. A newer simulation can no longer displace a normal study continuation; an explicit test view or named test session is required to retrieve simulations. The Tutor page has a reviewable Claude continuation prompt tied to the exact course/session and scope, without embedding material text or responses or sending anything automatically. Switching the view clears the prepared prompt; reload and course/account changes return to normal study. Settings now distinguishes the Claude private pilot from the other providers' manual handoffs.
+
+All 351 automated checks passed, including 25 focused connector/OAuth tests. Synthetic browser checks confirmed default hiding, explicit test read, simulation-only continuation instructions, reset on switching/reload, unchanged practice counts and the second account's empty test view. Build, executable bundle and privacy scan with the private-reference denylist passed. The website and connector were deployed to the existing private pilot; hosted read-only checks confirmed normal resume hides the prior simulations, explicit test view retrieves the existing test and continuation preparation changes no record. No actual learning record, source material, permission or AI allowance was changed. This improves continuation and separation; it does not activate other providers or add a new teaching-quality evaluation.
+
 ## Course lookup repair — October 13, 2026
 
 Deployed explicit course-code/title lookup for `study_resume`, with unique authorized matches only, term/section disambiguation, returned opaque identity and compatibility with the earlier course-label-in-ID mistake. Writes remain exact-ID-only. Verification: all 350 automated tests passed, including 24 focused connector checks for real Worker/SQLite OAuth owner separation, unapproved courses, repeated terms/sections, incomplete pagination and save/revoke behavior. Build, executable bundle and privacy scan passed. The authorized harder live Claude evaluation is now complete; both initial lookup and fresh-chat resume resolved the course code on their first attempt. Results and limits follow below.

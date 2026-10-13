@@ -74,11 +74,13 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
   const packet=write({course_id:'shared',session_id:'synthetic-session',topic:'Cost advantage',question:'Why can lower costs improve margin?',response:'Lower costs leave more profit at the same price.',assistance:'independent',test_only:true,next_step:'Explain when a firm might lower price instead.',sources:[{material_id:'notes',revision:1,start:0,end:40}],criteria:[{criterion:'Relates costs to margin',verdict:'met',evidence_quote:'more profit at the same price',reason:'The response links cost reduction with profit holding price fixed.'}]});
   await t.test('real token saves back to website; fresh client resumes; B cannot see save or receipt',async()=>{
     const saved=value(await rpc(a.tokens.access_token,'study_save_checkpoint',packet));assert.equal(saved.ok,true,JSON.stringify(saved));assert.equal(saved.record.assessment.mastery,false);
-    assert.deepEqual((await site('/api/study?course_id=shared')).record,saved.record);
-    assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared'})).record,saved.record);
+    assert.deepEqual((await site('/api/study?course_id=shared&scope=test')).record,saved.record);
+    assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared',scope:'test'})).record,saved.record);
+    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared'})).record,null);
+    assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_id:'shared',scope:'test'})).record,null);
     assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',packet)).replayed,true);
     assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_id:'shared'})).record,null);
-    assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'SHARED'})).record,saved.record);
+    assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'SHARED',scope:'test'})).record,saved.record);
     assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_query:'SHARED'})).record,null);
     assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'HIDDEN'})).error,'course_not_found_or_not_authorized');
     assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'Synthetic b shared'})).error,'course_not_found_or_not_authorized');

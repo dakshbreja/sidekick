@@ -79,7 +79,7 @@ export default {
       }
       if(path==='/api/study' && ['GET','PUT'].includes(request.method)){
         if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
-        if(request.method==='GET')return respond(await dispatch('study.get',queryData(url,['course_id','session_id'])));
+        if(request.method==='GET')return respond(await dispatch('study.get',queryData(url,['course_id','session_id','scope'])));
         const packet=writePacket(await readJSON(request,40000));return respond(await dispatch('study.put',packet.data,packet));
       }
       if(path==='/api/tutor' && ['GET','POST'].includes(request.method)){

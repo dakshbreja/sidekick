@@ -26,9 +26,15 @@ The existing transaction saves checkpoint, receipt and account revision together
 
 `study_resume` accepts either an opaque `course_id` or an exact course code/title in `course_query`, plus optional exact `term_id` and `section` filters. It searches only the caller's already-authorized course list, follows bounded pagination and refuses incomplete coverage. One exact match returns the checkpoint and `resolved_course.id` for subsequent source reads and saves. Repeated codes across terms/sections return `course_ambiguous` with only authorized course metadata; no checkpoint is selected. Unknown and unauthorized names share the same error. No fuzzy matching or implicit current-term preference is used. Older clients that put a code in `course_id` get the same unique-match resolution; actual opaque IDs take precedence. Other tools and all saves still require exact IDs.
 
+## Normal study versus simulation resume
+
+Course-wide resume now defaults to `scope: learning`, selecting only non-test checkpoints. A newer simulation cannot replace the normal continuation, and a test-only course returns no normal checkpoint. Explicit `scope: test` selects the latest simulation. An exact `session_id` can still recover either kind for receipts/review; combining it with a scope further restricts the result. Invalid scopes fail closed. These are read filters, not record migration or new access permissions.
+
+The Tutor page starts in normal study view. An explicit simulation checkbox reveals the separate test checkpoint and resets on reload or course/account changes. Prepare Claude continuation produces a reviewable prompt with only course/session identifiers, the selected scope and study instructions; it includes no material passages or learner answers, sends nothing, and grants no access. The prompt requires the existing approved connector, stops on missing/revoked access, preserves test-only saves and asks for save confirmation. Other providers retain the manual material-handoff path.
+
 ## Local interfaces
 
-- `GET /api/study?course_id=...&session_id=...` (session optional): resume through the normal authenticated website boundary.
+- `GET /api/study?course_id=...&session_id=...` (session and scope optional): resume through the normal authenticated website boundary.
 - `PUT /api/study`: the same save contract as the connector, with `operation_id` and `expected_revision`.
 - `POST /api/study-connector-preview`: JSON-RPC adapter for `initialize`, `ping`, `tools/list` and `tools/call`. Requires `STUDY_CONNECTOR_PREVIEW=true`, a verified Access assertion, exact `X-Workspace-Id`, existing origin protections, and a body no larger than 40 KB. Disabled by default and not enabled on the hosted site.
 - The website has no public `/mcp` route. The separate connector service implements stateless Streamable HTTP POST responses, MCP `2025-06-18`, OAuth discovery, authorization-code/refresh/revocation endpoints and Claude DCR. The installed instruction-only plugin stays unchanged.

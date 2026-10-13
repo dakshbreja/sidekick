@@ -199,7 +199,7 @@ export function validateWrite(op, data) {
 }
 export function validateRead(op, data) {
   const fields = {
-    'study.get':['course_id','session_id'], 'study.material':['course_id','material_id','revision','start'], 'study.deadlines':['course_id','limit','cursor'], 'study.receipt':['operation_id'],
+    'study.get':['course_id','session_id','scope'], 'study.material':['course_id','material_id','revision','start'], 'study.deadlines':['course_id','limit','cursor'], 'study.receipt':['operation_id'],
     'daily.get': [], 'assignments.list':['course_id','limit','cursor'], 'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
     'materials.list': ['course_id', 'limit', 'cursor'], 'materials.get': ['id'],
     'progress.list': ['course_id', 'status', 'limit', 'cursor'],
@@ -213,6 +213,7 @@ export function validateRead(op, data) {
   object(data, fields);
   for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id','material_id']) if (data[key] !== undefined) id(data[key]);
   if(['study.get','study.material','study.deadlines'].includes(op)&&data.course_id===undefined)fail('invalid_id');
+  if(op==='study.get'&&data.scope!==undefined)enumeration(data.scope,['learning','test']);
   if(op==='study.material'){id(data.material_id);revision(data.revision);if(data.revision<1)fail('invalid_revision');if(data.start!==undefined)revision(data.start);}
   if(op==='study.receipt')operationId(data.operation_id);
   if (['materials.get', 'google_selection.get'].includes(op) && data.id === undefined) fail('invalid_id');

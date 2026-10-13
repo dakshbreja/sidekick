@@ -77,10 +77,27 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
     saved=await rpc('study_save_checkpoint',packet);assert.equal(saved.ok,true);assert.equal(saved.revision,1);
     assert.equal(saved.record.assessment.outcome,'partial');assert.equal(saved.record.assessment.mastery,false);assert.equal(saved.record.assessment.authority,'assistant_report_unverified');
     assert.equal(saved.record.sources[0].text,sourceText);
-    const website=await req('/api/study?course_id=synthetic-course');assert.deepEqual(website.record,saved.record);
-    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course'})).record,saved.record);
+    const website=await req('/api/study?course_id=synthetic-course&scope=test');assert.deepEqual(website.record,saved.record);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).record,saved.record);
     const tutor=await req('/api/tutor?course_id=synthetic-course');assert.deepEqual(tutor.session.summary,{correct:0,assisted_correct:0,incorrect:0});
     const exp=await req('/api/account/export');assert.deepEqual(exp.data.progress,[]);assert.deepEqual(exp.data.learning,[]);assert.deepEqual(exp.data.study_sessions,[saved.record]);
+  });
+  await t.test('default continuation excludes simulations; explicit test and session reads stay available',async()=>{
+    assert.equal((await req('/api/study?course_id=synthetic-course')).record,null);
+    assert.equal((await rpc('study_resume',{course_query:'Synthetic course a'})).record,null);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:packet.session_id})).record,saved.record);
+    assert.equal((await rpc('study_resume',{course_id:'synthetic-course',session_id:packet.session_id,scope:'learning'})).record,null);
+    assert.equal((await rpc('study_resume',{course_id:'synthetic-course',scope:'test'},'b')).record,null);
+    await req('/api/study?course_id=synthetic-course&scope=all',{status:400});
+    const learning=await rpc('study_save_checkpoint',write({...checkpoint(),session_id:'synthetic-learning-session',test_only:false}));
+    assert.equal(learning.ok,true);
+    const newerTest=await rpc('study_save_checkpoint',write({...checkpoint(),session_id:'synthetic-newer-test'}));
+    assert.equal(newerTest.ok,true);
+    assert.deepEqual((await req('/api/study?course_id=synthetic-course')).record,learning.record);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course'})).record,learning.record);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:newerTest.record.session_id,scope:'test'})).record,newerTest.record);
+    assert.equal((await rpc('study_resume',{course_id:'synthetic-course',session_id:learning.record.session_id,scope:'test'})).record,null);
+    assert.deepEqual((await req('/api/tutor?course_id=synthetic-course')).session.summary,{correct:0,assisted_correct:0,incorrect:0});
   });
   await t.test('lost responses, exact retries, changed packets and stale revisions preserve the original save',async()=>{
     assert.deepEqual((await rpc('study_get_receipt',{operation_id:packet.operation_id})).receipt,saved.receipt);
@@ -93,7 +110,7 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
     const unrelated=await req('/api/assignments',{method:'PUT',body:write({id:'synthetic-deadline',course_id:'synthetic-course',title:'Synthetic deadline',due_at:'2026-10-15T12:00:00.000Z',all_day:false})});
     assert.equal((await rpc('study_get_receipt',{operation_id:unrelated.receipt.operation_id})).error,'receipt_not_found');
     const deadlines=await rpc('study_read_deadlines',{course_id:'synthetic-course',limit:1});assert.equal(deadlines.records[0].progress,'unknown');assert.equal(deadlines.complete,true);
-    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course'})).record,saved.record);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).record,saved.record);
   });
   await t.test('second account and stale account guards cannot read or overwrite the checkpoint or receipt',async()=>{
     assert.equal((await rpc('study_resume',{course_id:'synthetic-course'},'b')).record,null);
@@ -111,7 +128,7 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
   });
   await t.test('fresh runtime resumes the exact checkpoint and deletion removes it without affecting B',async()=>{
     const authFixture=rt.authFixture;await rt.close();rt=await createRuntime({persistPath,authFixture,bindings:{STUDY_CONNECTOR_PREVIEW:'true'}});
-    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course'})).record,saved.record);
+    assert.deepEqual((await rpc('study_resume',{course_id:'synthetic-course',session_id:'synthetic-session'})).record,saved.record);
     const exp=await req('/api/account/export');await req('/api/account',{method:'DELETE',body:{operation_id:crypto.randomUUID(),expected_revision:exp.account_revision,confirm:'DELETE_MY_WORKSPACE'}});
     assert.equal((await rpc('study_resume',{course_id:'synthetic-course'})).error,'account_deleted');
     assert.equal((await rpc('study_get_receipt',{operation_id:packet.operation_id})).error,'account_deleted');
