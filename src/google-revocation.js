@@ -1,0 +1,42 @@
+// Copyright 2026 Daksh Breja. All rights reserved.
+// Private removal jobs. Tokens never enter normal records, receipts or RPC.
+import {openCredential} from './credential-envelope.js';
+import {clearGoogleCollection} from './google-collection-state.js';
+import {fail,id,revision,operationId,object} from './validation.js';
+export const REVOCATION_LIMITS=Object.freeze({leaseMs:60000,retentionMs:86400000,attempts:8});
+export function initializeRevocations(store){store.sql.exec('CREATE TABLE IF NOT EXISTS google_revocations (connection_id TEXT PRIMARY KEY,body TEXT NOT NULL)');}
+const read=(store,key)=>{const row=store.row('SELECT body FROM google_revocations WHERE connection_id=?',key);return row?JSON.parse(row.body):null;};
+const rows=store=>store.sql.exec('SELECT body FROM google_revocations ORDER BY connection_id').toArray().map(r=>JSON.parse(r.body));
+const put=(store,row)=>store.sql.exec('INSERT INTO google_revocations VALUES (?,?) ON CONFLICT(connection_id) DO UPDATE SET body=excluded.body',row.connection_id,JSON.stringify(row));
+export function revocationStatus(store,key){const row=read(store,key);return row?{state:row.outcome,requested_at:row.requested_at,confirmed_at:row.confirmed_at??null,next_retry_at:row.outcome==='pending'?Math.max(row.next_due,row.lease_until??0):null,error:row.error??null}:null;}
+export function revocationBarrier(store,now){return rows(store).some(row=>row.outcome==='pending'||row.lease_until>now);}
+export function abandonRevocation(store,key,now){const row=read(store,key);if(row?.credential){put(store,{...row,credential:null,outcome:'unconfirmed',error:'removed_locally',next_due:null,lease_until:Math.max(row.lease_until??0,now)});}}
+export function revocationExpiry(store){const times=rows(store).filter(row=>row.credential).map(row=>row.expires_at);return times.length?Math.min(...times):null;}
+export function revocationTasks(store){return rows(store).filter(row=>row.outcome==='pending'&&row.credential).map(row=>({connectionId:row.connection_id,operation:'revoke',key:'revoke\u0000'+row.connection_id,due:Math.max(row.next_due,row.lease_until??0)}));}
+function fenceConnection(store,row){const current=store.googleConnection(row.connection_id);if(!current||current.generation!==row.generation||current.status!=='revoking')fail('google_revocation_stale',409);return current;}
+function saveConnection(store,current,status){store.sql.exec('UPDATE google_connections SET body=? WHERE id=?',JSON.stringify({id:current.id,generation:current.generation,revision:current.revision+1,status}),current.id);store.sql.exec('UPDATE workspace_meta SET account_revision=account_revision+1 WHERE singleton=1');}
+export function expireRevocations(store,now){for(const row of rows(store)){if(row.credential&&row.expires_at<=now){put(store,{...row,credential:null,outcome:'unconfirmed',error:'cleanup_expired',lease:null,lease_until:0,next_due:null});const current=store.googleConnection(row.connection_id);if(current?.generation===row.generation&&current.status==='revoking')saveConnection(store,current,'disconnected');}}}
+export class GoogleRevocationState {
+ constructor(store,{key,clock=()=>Date.now()}={}){this.store=store;this.key=key;this.clock=clock;}
+ transaction(tenant,callback){if(typeof tenant!=='string'||!/^[A-Za-z0-9_-]{16,128}$/.test(tenant))fail('invalid_owner',403);return this.store.storage.transactionSync(()=>{const meta=this.store.bind(tenant);if(meta.deleted)fail('account_deleted',410);return callback();});}
+ start(tenant,input){object(input,['connectionId','expectedRevision','attemptId']);const key=id(input.connectionId),expected=revision(input.expectedRevision),attempt=operationId(input.attemptId);
+  return this.transaction(tenant,()=>{const old=read(this.store,key);if(old?.attempt_id===attempt){if(old.expected_revision!==expected)fail('revocation_attempt_conflict',409);return revocationStatus(this.store,key);}
+   const current=this.store.googleConnection(key);if(!current||current.revision!==expected)fail('revision_conflict',409);if(!current.tokens)fail('google_revocation_no_token',409);if(old?.outcome==='pending')fail('google_revocation_pending',409);
+   const now=this.clock(),row={connection_id:key,attempt_id:attempt,expected_revision:expected,generation:current.generation+1,credential_generation:current.generation,credential:current.tokens,outcome:'pending',requested_at:new Date(now).toISOString(),expires_at:now+REVOCATION_LIMITS.retentionMs,next_due:now+1000,attempts:0,lease:null,lease_until:0};
+   this.store.sql.exec('UPDATE google_connections SET body=? WHERE id=?',JSON.stringify({id:key,generation:row.generation,revision:current.revision+1,status:'revoking'}),key);this.store.sql.exec('UPDATE workspace_meta SET account_revision=account_revision+1 WHERE singleton=1');this.store.sql.exec('DELETE FROM google_choices WHERE connection_id=?',key);clearGoogleCollection(this.store,key);
+   // Cancel other unfinished consents: Google's project-wide removal could
+   // otherwise race an older callback into saving already-revoked credentials.
+   for(const saved of this.store.sql.exec('SELECT body FROM google_connections').toArray()){const connection=JSON.parse(saved.body);if(['authorizing','exchanging'].includes(connection.status))saveConnection(this.store,{...connection,generation:connection.generation+1},'disconnected');}
+   put(this.store,row);return revocationStatus(this.store,key);
+  });
+ }
+ claim(tenant,connectionId){return this.transaction(tenant,()=>{const row=read(this.store,id(connectionId)),now=this.clock();if(!row||row.outcome!=='pending'||!row.credential||row.expires_at<=now||row.next_due>now||row.lease_until>now)return null;const current=fenceConnection(this.store,row);if(row.attempts>=REVOCATION_LIMITS.attempts||row.expires_at<=now+REVOCATION_LIMITS.leaseMs){put(this.store,{...row,credential:null,outcome:'unconfirmed',error:'retry_limit',next_due:null,lease:null,lease_until:0});saveConnection(this.store,current,'disconnected');return null;}const next={...row,attempts:row.attempts+1,lease:crypto.randomUUID(),lease_until:now+REVOCATION_LIMITS.leaseMs};put(this.store,next);return next;});}
+ current(tenant,claim){return this.transaction(tenant,()=>{const row=read(this.store,claim.connection_id);if(!row||row.outcome!=='pending'||row.generation!==claim.generation||row.lease!==claim.lease||row.lease_until<=this.clock()||row.expires_at<=this.clock())fail('google_revocation_stale',409);fenceConnection(this.store,row);return row;});}
+ async token(tenant,claim){this.current(tenant,claim);const value=await openCredential(this.key,{tenantId:tenant,connectionId:claim.connection_id,generation:claim.credential_generation,purpose:'google_tokens'},claim.credential);this.current(tenant,claim);return value.refresh_token;}
+ finish(tenant,claim,result){return this.transaction(tenant,()=>{const row=read(this.store,claim.connection_id);if(!row||row.outcome!=='pending'||row.lease!==claim.lease||row.generation!==claim.generation||row.expires_at<=this.clock()||row.lease_until<=this.clock())fail('google_revocation_stale',409);const current=fenceConnection(this.store,row),now=this.clock();
+   const terminal=result.confirmed||!result.retryable||row.attempts>=REVOCATION_LIMITS.attempts;
+   const next={...row,lease:null,lease_until:0,error:result.confirmed?null:result.error,next_due:terminal?null:now+Math.max(Math.min(3600000,30000*2**(row.attempts-1)),(result.retryAfterSeconds||0)*1000),outcome:result.confirmed?'confirmed':terminal?'unconfirmed':'pending',credential:terminal?null:row.credential,...(result.confirmed?{confirmed_at:new Date(now).toISOString()}:{})};
+   put(this.store,next);if(terminal)saveConnection(this.store,current,'disconnected');return revocationStatus(this.store,row.connection_id);
+  });}
+}
+export async function runRevocation({tenantId,connectionId,state,client}){const claim=state.claim(tenantId,connectionId);if(!claim)return {kind:'wait'};try{const token=await state.token(tenantId,claim);state.current(tenantId,claim);const result=await client.revoke(token);state.finish(tenantId,claim,result);return {kind:'revocation_finished'};}catch(error){if(['account_deleted','google_revocation_stale'].includes(error.code))return {kind:'stopped'};try{state.finish(tenantId,claim,{confirmed:false,retryable:true,error:'revocation_unavailable'});}catch(stale){if(!['account_deleted','google_revocation_stale'].includes(stale.code))throw stale;}return {kind:'revocation_retry'};}}

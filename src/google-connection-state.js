@@ -1,6 +1,7 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 // Internal connector state only. Never expose these methods through generic
 // dispatch/RPC: consumeAuthorization returns a verifier to trusted server code.
+import {revocationStatus,revocationBarrier,abandonRevocation} from './google-revocation.js';
 import { clearGoogleCollection } from './google-collection-state.js';
 import { base64url } from 'jose';
 import { timingSafeEqual } from 'node:crypto';
@@ -80,7 +81,7 @@ export class GoogleConnectionState {
   }
   status(tenantId, connectionId) {
     id(connectionId);
-    return this.#transaction(tenantId, () => { this.#requireRegistration(connectionId); return { ...this.#status(this.#get(connectionId)), connection_id: connectionId }; });
+    return this.#transaction(tenantId, () => { this.#requireRegistration(connectionId); return { ...this.#status(this.#get(connectionId)), connection_id: connectionId, revocation:revocationStatus(this.#store,connectionId), authorization_blocked:revocationBarrier(this.#store,this.#now()) }; });
   }
   #replay(row, requestHash) {
     if (!sameDigest(row.request_hash, requestHash)) fail('authorization_attempt_conflict', 409);
@@ -104,6 +105,7 @@ export class GoogleConnectionState {
     const requestHash = await digest(JSON.stringify([connectionId, expectedRevision, attemptId, browserHash, redirectUri]));
     const previous = this.#transaction(tenantId, () => {
       this.#requireRegistration(connectionId);
+      if(revocationBarrier(this.#store,this.#now()))fail('google_revocation_pending',409);
       const old = this.#get(connectionId);
       if (old?.attempt_id === attemptId) { this.#replay(old, requestHash); return old; }
       if ((old?.revision ?? 0) !== expectedRevision) fail('revision_conflict', 409);
@@ -120,10 +122,12 @@ export class GoogleConnectionState {
     row.pending = await sealCredential(this.#key, this.#binding(tenantId, row, 'google_oauth_pending'), { state, verifier, redirect_uri: redirectUri });
     const saved = this.#transaction(tenantId, meta => {
       this.#requireRegistration(connectionId);
+      if(revocationBarrier(this.#store,this.#now()))fail('google_revocation_pending',409);
       const current = this.#get(connectionId);
       if (current?.attempt_id === attemptId) { this.#replay(current, requestHash); return current; }
       if ((current?.revision ?? 0) !== expectedRevision) fail('revision_conflict', 409);
       if (!current && this.#store.row('SELECT COUNT(*) AS n FROM google_connections').n >= GOOGLE_STATE_LIMITS.connections) fail('connection_limit_reached', 409);
+      this.#store.sql.exec('DELETE FROM google_revocations WHERE connection_id=?',connectionId);
       this.#save(meta, row);
       return row;
     });
@@ -278,16 +282,17 @@ export class GoogleConnectionState {
       this.#requireRegistration(connectionId);
       const current = this.#get(connectionId);
       // Exact retry after a lost local-erasure response is harmless.
-      if (current?.status === 'disconnected' && current.revision === expectedRevision + 1) return { ...this.#status(current), provider_revocation: 'not_attempted' };
+      if (current?.status === 'disconnected' && current.revision === expectedRevision + 1) return { ...this.#status(current), provider_revocation: revocationStatus(this.#store,connectionId)?.state??'not_attempted' };
       if ((current?.revision ?? 0) !== expectedRevision) fail('revision_conflict', 409);
       // Persist a fence even before the first begin has committed: it may be
       // awaiting crypto right now and must not resurrect after this response.
       if (!current && this.#store.row('SELECT COUNT(*) AS n FROM google_connections').n >= GOOGLE_STATE_LIMITS.connections) fail('connection_limit_reached', 409);
       const next = { id: connectionId, revision: expectedRevision + 1, generation: (current?.generation ?? 0) + 1, status: 'disconnected' };
+      abandonRevocation(this.#store,connectionId,this.#now());
       this.#save(meta, next);
       this.#store.sql.exec('DELETE FROM google_choices WHERE connection_id = ?', connectionId);
       clearGoogleCollection(this.#store, connectionId);
-      return { ...this.#status(next), provider_revocation: 'not_attempted' };
+      return { ...this.#status(next), provider_revocation: revocationStatus(this.#store,connectionId)?.state??'not_attempted' };
     });
   }
 }

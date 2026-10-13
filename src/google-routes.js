@@ -75,6 +75,10 @@ export async function handleGoogleRoute({ request, url, env, identity, student }
     if (!result.ok) return respond(result);
     return json({ ok: true, authorization_url: authorizationUrl(config, connectionId, result.intent), connection: { connection_id: connectionId, revision: result.intent.revision, status: result.intent.status, authorized: false, live_sync: false } });
   }
+  if(url.pathname==='/api/google/revoke'){
+    object(data,['connection_id','expected_revision','attempt_id']);
+    return respond(await call('revoke',{connectionId:id(data.connection_id),expectedRevision:revision(data.expected_revision),attemptId:operationId(data.attempt_id)}));
+  }
   if (url.pathname === '/api/google/disconnect') {
     object(data, ['connection_id', 'expected_revision']);
     return respond(await call('disconnect', { connectionId: id(data.connection_id), expectedRevision: revision(data.expected_revision) }));

@@ -1,4 +1,5 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
+import { initializeRevocations } from './google-revocation.js';
 import { initializeGoogleSchedule } from './google-scheduler.js';
 import { initializeGoogleCollection, clearGoogleCollection, reconcileGoogleSelection, exportGoogleSnapshots } from './google-collection-state.js';
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
@@ -48,6 +49,8 @@ export class StudentStore {
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (4)');
       initializeGoogleSchedule(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (5)');
+      initializeRevocations(this);
+      this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (6)');
     });
   }
   row(query, ...args) { return this.sql.exec(query, ...args).toArray()[0]; }
@@ -303,6 +306,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM google_choices');
     clearGoogleCollection(this);
     this.sql.exec('DELETE FROM google_schedule');
+    this.sql.exec('DELETE FROM google_revocations');
     this.sql.exec('UPDATE workspace_meta SET deleted = 1, deleted_at = ?, account_revision = ? WHERE singleton = 1', now, accountRevision);
     this.saveReceipt(message.operationId, requestHash, result);
     return result;

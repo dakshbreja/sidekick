@@ -111,6 +111,16 @@ try{
  assert.equal(googleSelection.revision,2);
  await page.screenshot({path:join(evidence,'google-rejected-selection.png'),fullPage:true});
  passed.push('interrupted selection followed by disconnect: exact replay, terminal rejection receipt and explicit not-applied message');
+ googleState={...googleState,status:'authorized',authorized:true,revision:5};
+ await page.route('**/api/google/revoke',route=>{const packet=route.request().postDataJSON();assert.equal(packet.connection_id,source);assert.equal(packet.expected_revision,5);assert.ok(packet.attempt_id);googleState={...googleState,status:'revoking',authorized:false,authorization_blocked:true,revocation:{state:'pending'}};return route.fulfill({json:{ok:true,revocation:googleState.revocation}});});
+ await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/including its other connections/);
+ await page.getByRole('button',{name:'Revoke Google permission and disconnect',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Google permission removal requested'));
+ assert.match(await page.locator('#connections').innerText(),/queued or retrying automatically/);assert.equal(await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).count(),0);
+ googleState={...googleState,status:'disconnected',authorization_blocked:false,revocation:{state:'confirmed'}};await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/Google confirmed the permission removal/);
+ googleState.revocation={state:'unconfirmed'};await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/permission removal is unconfirmed/);assert.equal(await page.getByRole('link',{name:'Review Google Account connections'}).getAttribute('href'),'https://myaccount.google.com/connections');
+ await page.screenshot({path:join(evidence,'google-removal-status.png'),fullPage:true});await page.unroute('**/api/google/revoke');
+ passed.push('Google removal: scope warning, explicit request, pending reconnect block, confirmed versus unconfirmed status and manual cleanup link');
  for(const pattern of ['**/api/receipts/*','**/api/google/selection','**/api/google/selection?*','**/api/onboarding','**/api/google/status?*','**/api/google/upcoming?*','**/api/google/prepare','**/api/google/begin','**/api/google/disconnect','https://accounts.google.com/**'])await page.unroute(pattern);
  await page.reload();await ready();
  passed.push('synthetic consent UI: explicit permission, bounded Google destination, unsynced status, paged literal calendar names and local-disconnect wording');

@@ -1,18 +1,19 @@
 // Copyright 2026 Daksh Breja. All rights reserved.
 // Methods below run inside the student's SQL/alarm transaction. No external I/O.
 import {COLLECTION_BUDGET,reserveWindow} from './collection-budget.js';
+import {revocationTasks} from './google-revocation.js';
 import {googleConfigured} from './google-oauth.js';
 export function collectionEnabled(env){return env.GOOGLE_COLLECTION_ENABLED==='true' && googleConfigured(env) && Boolean(env.COLLECTION_BUDGETS);}
 export function initializeGoogleSchedule(store){store.sql.exec('CREATE TABLE IF NOT EXISTS google_schedule (singleton INTEGER PRIMARY KEY CHECK(singleton=1),body TEXT NOT NULL)');}
 export class GoogleScheduler {
-  constructor(store,{clock=()=>Date.now()}={}){this.store=store;this.clock=clock;}
+  constructor(store,{clock=()=>Date.now(),includeCollections=true,includeRevocations=false}={}){this.store=store;this.clock=clock;this.includeCollections=includeCollections;this.includeRevocations=includeRevocations;}
   account(){return this.store.row('SELECT * FROM workspace_meta WHERE singleton=1');}
   state(){const row=this.store.row('SELECT body FROM google_schedule WHERE singleton=1');return row?JSON.parse(row.body):{budget:{},next_allowed:0,last_key:'',pending:null,failures:0,paused:false,last_error:null};}
   save(state){this.store.sql.exec('INSERT INTO google_schedule VALUES (1,?) ON CONFLICT(singleton) DO UPDATE SET body=excluded.body',JSON.stringify(state));}
   candidates(){
     const meta=this.account();if(!meta||meta.deleted)return [];
     const choices=this.store.sql.exec("SELECT body FROM records WHERE kind='google_selection' ORDER BY id").toArray().map(row=>JSON.parse(row.body)),items=[];
-    for(const selection of choices){
+    for(const selection of this.includeCollections&&!this.state().paused?choices:[]){
       if(!this.store.activeGoogleConnection(selection.id,selection.connection_generation))continue;
       const auth=this.store.googleConnection(selection.id);
       for(const calendarId of selection.calendar_ids){
@@ -21,21 +22,22 @@ export class GoogleScheduler {
         items.push({connectionId:selection.id,calendarId,key:selection.id+'\u0000'+calendarId,due:Math.max(row?.next_due??0,row?.job?.lease_expires_at??0,auth.refresh_retry_at??0,auth.refresh_lease?.expires_at??0)});
       }
     }
+    if(this.includeRevocations)items.push(...revocationTasks(this.store));
     return items.sort((a,b)=>a.key<b.key?-1:a.key>b.key?1:0);
   }
   nextTime(){
-    const candidates=this.candidates(),state=this.state(),now=this.clock();if(!candidates.length||state.paused)return null;
+    const candidates=this.candidates(),state=this.state(),now=this.clock();if(!candidates.length)return null;
     const budget=reserveWindow(state.budget,now,{hour:COLLECTION_BUDGET.studentHour,day:COLLECTION_BUDGET.studentDay});
     return Math.max(now+1000,Math.min(...candidates.map(item=>item.due)),state.next_allowed,state.pending?.expires_at??0,budget.retry_at??0);
   }
   reserve(){
-    const now=this.clock(),state=this.state(),candidates=this.candidates();if(!candidates.length||state.paused)return {kind:'idle'};
+    const now=this.clock(),state=this.state(),candidates=this.candidates();if(!candidates.length)return {kind:'idle'};
     const budget=reserveWindow(state.budget,now,{hour:COLLECTION_BUDGET.studentHour,day:COLLECTION_BUDGET.studentDay});
     if(!budget.allowed||state.next_allowed>now||state.pending?.expires_at>now)return {kind:'wait'};
     const due=candidates.filter(item=>item.due<=now);if(!due.length)return {kind:'wait'};
     const next=due.find(item=>item.key>state.last_key)||due[0],reservationId=crypto.randomUUID();
     state.budget=budget.state;state.last_key=next.key;state.next_allowed=now+COLLECTION_BUDGET.gapMs;state.pending={id:reservationId,expires_at:now+COLLECTION_BUDGET.leaseMs};this.save(state);
-    return {kind:'reserved',tenantId:this.account().owner,connectionId:next.connectionId,calendarId:next.calendarId,reservationId};
+    return {kind:'reserved',tenantId:this.account().owner,connectionId:next.connectionId,calendarId:next.calendarId,operation:next.operation||'collect',reservationId};
   }
   finish(reservationId,result,error=false){
     if(this.account()?.deleted)return;

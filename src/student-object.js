@@ -2,12 +2,14 @@
 import { DurableObject } from 'cloudflare:workers';
 import { StudentStore } from './store.js';
 import { GoogleConnectionState } from './google-connection-state.js';
-import { googleConfiguration, createGoogleOAuthClient, GoogleOAuthError } from './google-oauth.js';
+import { googleConfiguration, googleConfigured, createGoogleOAuthClient, GoogleOAuthError } from './google-oauth.js';
 import { ContractError, object, id } from './validation.js';
 import { createGoogleCalendarClient, CalendarProviderError } from './google-calendar.js';
 import { GoogleCollectionState } from './google-collection-state.js';
 import { GoogleScheduler, collectionEnabled } from './google-scheduler.js';
 import { collectGooglePage } from './google-collector.js';
+import {GoogleRevocationState,runRevocation,expireRevocations,revocationExpiry} from './google-revocation.js';
+import {createRevocationClient} from './google-revoke-client.js';
 import { withGoogleAccess } from './google-access.js';
 
 export class StudentState extends DurableObject {
@@ -16,14 +18,15 @@ export class StudentState extends DurableObject {
     ctx.blockConcurrencyWhile(async () => {
       this.store = new StudentStore(ctx.storage);
       this.collection = new GoogleCollectionState(this.store);
-      this.scheduler = new GoogleScheduler(this.store);
+      this.scheduler = new GoogleScheduler(this.store,{includeCollections:collectionEnabled(env),includeRevocations:googleConfigured(env)&&Boolean(env.COLLECTION_BUDGETS)});
     });
   }
 
   // This RPC is called only by the authenticated same-service Worker. The
   // permanent binding also catches accidental routing to another student's DO.
   async reschedule(replace=false) {
-    const next=collectionEnabled(this.env)?this.scheduler.nextTime():null;
+    const times=[this.scheduler.nextTime(),revocationExpiry(this.store)].filter(value=>value!==null);
+    const next=times.length?Math.max(Date.now()+1000,Math.min(...times)):null;
     if(next===null){await this.ctx.storage.deleteAlarm();return;}
     const existing=await this.ctx.storage.getAlarm();
     if(replace || existing===null || next<existing)await this.ctx.storage.setAlarm(next);
@@ -39,7 +42,7 @@ export class StudentState extends DurableObject {
   async alarm() {
     // Commit the reservation and recovery wakeup together, before external I/O.
     const plan=await this.ctx.storage.transaction(async()=>{
-      if(!collectionEnabled(this.env)){await this.ctx.storage.deleteAlarm();return {kind:'idle'};}
+      expireRevocations(this.store,Date.now());
       const result=this.scheduler.reserve();await this.reschedule(true);return result;
     });
     if(plan.kind!=='reserved')return;
@@ -53,7 +56,7 @@ export class StudentState extends DurableObject {
       else {
         const pending=this.scheduler.state().pending;
         if(this.scheduler.account()?.deleted || pending?.id!==plan.reservationId || pending.expires_at<=Date.now())result={kind:'stopped'};
-        else {const config=googleConfiguration(this.env);result=await collectGooglePage({...plan,collection:this.collection,state:new GoogleConnectionState(this.store,{key:config.key}),config});}
+        else {const config=googleConfiguration(this.env);result=plan.operation==='revoke'?await runRevocation({...plan,state:new GoogleRevocationState(this.store,{key:config.key}),client:createRevocationClient()}):await collectGooglePage({...plan,collection:this.collection,state:new GoogleConnectionState(this.store,{key:config.key}),config});}
       }
     } catch { failed=true; }
     finally {clearTimeout(timer);}
@@ -89,6 +92,10 @@ export class StudentState extends DurableObject {
       if (op === 'begin') {
         object(data, ['connectionId', 'expectedRevision', 'attemptId', 'browserBinding']);
         return { ok: true, intent: await state.beginAuthorization(tenantId, { ...data, redirectUri: config.redirectUri }) };
+      }
+      if(op==='revoke'){
+        if(!this.env.COLLECTION_BUDGETS)return {ok:false,error:'google_revocation_unavailable',status:503};
+        return await this.ctx.storage.transaction(async()=>{const revocation=new GoogleRevocationState(this.store,{key:config.key}).start(tenantId,data);await this.reschedule();return {ok:true,revocation};});
       }
       if (op === 'disconnect') return await this.ctx.storage.transaction(async()=>{const connection=state.disconnect(tenantId,data);await this.reschedule();return {ok:true,connection};});
       if (op === 'calendars') {

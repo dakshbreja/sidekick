@@ -9,15 +9,16 @@ import {build} from 'esbuild';
 import {fileURLToPath} from 'node:url';
 import {createRuntime} from './runtime-fixture.mjs';
 import {GOOGLE_CALENDAR_SCOPES} from '../src/google-calendar.js';
-async function setup(t, { initialTtl = 3600, refreshResponse, listResponse, persistent = true, enabled = true, eventsResponse } = {}) {
+async function setup(t, { initialTtl = 3600, refreshResponse, listResponse, persistent = true, enabled = true, eventsResponse, revokeResponse } = {}) {
   const directory = persistent ? await mkdtemp(join(tmpdir(), 'community-refresh-')) : undefined;
   const root=fileURLToPath(new URL('../',import.meta.url)),deploymentBundle=join(directory,'synthetic-worker.mjs');
   const source=`export {default} from './src/index.js';import {CollectionBudget as BudgetBase} from './src/collection-budget-object.js';export class CollectionBudget extends BudgetBase {async exhaust(){const now=Date.now();this.ctx.storage.sql.exec('INSERT OR REPLACE INTO provider_budget VALUES (1,?)',JSON.stringify({hour_start:Math.floor(now/3600000)*3600000,hour_used:3000,day_start:Math.floor(now/86400000)*86400000,day_used:3000}));}}import {StudentState as Base} from './src/student-object.js';export class StudentState extends Base {async inspectSchedule(){return {alarm:await this.ctx.storage.getAlarm(),state:this.scheduler.state()};}async failNextSchedule(){this.failSchedule=true;}async reschedule(replace){await super.reschedule(replace);if(this.failSchedule){this.failSchedule=false;throw new Error('Synthetic schedule failure');}}}`;
   const compiled=await build({stdin:{contents:source,resolveDir:root},bundle:true,write:false,format:'esm',platform:'browser',target:'es2022',external:['cloudflare:*','node:*'],logLevel:'silent'});await writeFile(deploymentBundle,compiled.outputFiles[0].text);
   const bindings = { GOOGLE_COLLECTION_ENABLED: enabled?'true':'false', GOOGLE_OAUTH_ENABLED: 'true', GOOGLE_CLIENT_ID: 'example-client.apps.googleusercontent.com', GOOGLE_CLIENT_SECRET: 'example-client-secret', GOOGLE_REDIRECT_URI: 'https://community.example.invalid/api/google/callback', GOOGLE_CREDENTIAL_KEY: base64url.encode(crypto.getRandomValues(new Uint8Array(32))) };
-  const calls = { authorization: 0, refresh: 0, list: 0, events: 0 };
+  const calls = { authorization: 0, refresh: 0, list: 0, events: 0, revoke: 0 };
   const providerFetch = async request => {
     const url = new URL(request.url);
+    if(url.href==='https://oauth2.googleapis.com/revoke'){calls.revoke++;assert.equal(request.method,'POST');assert.equal(new URLSearchParams(await request.text()).get('token'),'example-existing-refresh');return revokeResponse?revokeResponse():new Response(null,{status:200});}
     if (url.href === 'https://oauth2.googleapis.com/token') {
       assert.equal(request.method, 'POST'); const form = new URLSearchParams(await request.text());
       if (form.get('grant_type') === 'authorization_code') { calls.authorization++; return Response.json({ access_token: 'example-old', refresh_token: 'example-existing-refresh', expires_in: initialTtl, token_type: 'Bearer', scope: GOOGLE_CALENDAR_SCOPES.join(' ') }); }
@@ -89,4 +90,22 @@ test('shared request budget denies provider work and preserves its cooldown acro
 test('workspace deletion cancels the alarm and a pending provider reply cannot restore student data',async t=>{
  let release;const gate=new Promise(resolve=>release=resolve);t.after(()=>release());const f=await setup(t,{eventsResponse:async()=>{await gate;return Response.json({items:[],nextSyncToken:'example-sync'});}});await select(f);await waitFor(()=>f.calls.events===1);
  const snapshot=await(await f.request('/api/account/export')).json();assert.equal((await f.request('/api/account',{method:'DELETE',headers:f.headers,body:{operation_id:'synthetic_delete',expected_revision:snapshot.account_revision,confirm:'DELETE_MY_WORKSPACE'}})).status,200);assert.equal((await f.inspect()).alarm,null);release();await f.restart();assert.equal((await f.inspect()).alarm,null);assert.equal((await(await f.request('/api/account/export')).json()).deleted,true);assert.equal(f.calls.events,1);
+});
+
+const revoke=async f=>f.request('/api/google/revoke',{method:'POST',headers:f.headers,body:{connection_id:'google_a',expected_revision:(await f.status()).revision,attempt_id:'synthetic_revoke'}});
+test('permission removal runs on a persisted alarm while calendar collection is disabled',async t=>{
+ const f=await setup(t,{enabled:false});const response=await revoke(f);assert.equal(response.status,200);assert.equal((await response.json()).revocation.state,'pending');assert.equal((await f.status()).authorized,false);
+ await f.restart();await f.inspect();await waitFor(()=>f.calls.revoke===1);await waitFor(async()=>(await f.status()).revocation.state==='confirmed');assert.equal((await f.inspect()).alarm,null);assert.equal(f.calls.events,0);
+ const output=await(await f.request('/api/account/export')).text();assert.doesNotMatch(output,/example-existing-refresh|credential|google_revocations/);
+ assert.equal((await f.request('/api/google/revoke',{student:'b',method:'POST',headers:f.headers,body:{connection_id:'google_a',expected_revision:2,attempt_id:'synthetic_revoke'}})).status,403);
+});
+test('revocation retry persists across restart and local erasure cancels it without claiming confirmation',async t=>{
+ const f=await setup(t,{enabled:false,revokeResponse:()=>new Response('example-private-error',{status:503,headers:{'Retry-After':'120'}})});assert.equal((await revoke(f)).status,200);await waitFor(()=>f.calls.revoke===1);await waitFor(async()=>(await f.status()).revocation.error==='revocation_not_confirmed');
+ const before=(await f.status()).revocation.next_retry_at;await f.restart();assert.equal((await f.status()).revocation.next_retry_at,before);assert.ok((await f.inspect()).alarm>=before);
+ const status=await f.status();assert.equal((await f.request('/api/google/disconnect',{method:'POST',headers:f.headers,body:{connection_id:'google_a',expected_revision:status.revision}})).status,200);assert.equal((await f.status()).revocation.state,'unconfirmed');assert.equal((await f.inspect()).alarm,null);assert.equal(f.calls.revoke,1);
+});
+test('failed wakeup rolls back removal, and deletion during a request prevents a late confirmation',async t=>{
+ let release;const gate=new Promise(resolve=>release=resolve);t.after(()=>release());const f=await setup(t,{enabled:false,revokeResponse:async()=>{await gate;return new Response(null,{status:200});}});
+ await f.failNextSchedule();assert.equal((await revoke(f)).status,503);assert.equal((await f.status()).authorized,true);assert.equal((await f.status()).revocation,null);assert.equal((await f.inspect()).alarm,null);
+ assert.equal((await revoke(f)).status,200);await waitFor(()=>f.calls.revoke===1);const snapshot=await(await f.request('/api/account/export')).json();assert.equal((await f.request('/api/account',{method:'DELETE',headers:f.headers,body:{operation_id:'synthetic_delete',expected_revision:snapshot.account_revision,confirm:'DELETE_MY_WORKSPACE'}})).status,200);release();await f.restart();assert.equal((await f.inspect()).alarm,null);assert.equal((await(await f.request('/api/account/export')).json()).deleted,true);
 });

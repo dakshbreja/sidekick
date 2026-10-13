@@ -80,7 +80,7 @@ test('real workerd/SQLite preserves single-use OAuth across runtime restart and 
   const finished = await request('finish', exchange); assert.equal(finished.status, 'authorized_not_synced');
   assert.equal(finished.last_successful_sync, null);
   await mf.dispose(); await start();
-  assert.deepEqual(await request('status'), finished);
+  assert.deepEqual(await request('status'), { ...finished, revocation: null, authorization_blocked: false });
   assert.equal((await request('delete')).ok, true);
   assert.equal((await request('privateCount')).count, 0);
   await mf.dispose(); await start();
