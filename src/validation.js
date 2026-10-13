@@ -50,7 +50,7 @@ function siteUrl(value) {
       url.hostname === 'localhost' || !url.hostname.includes('.') || url.port) fail('unsafe_site_url');
   return url.href;
 }
-export const WRITES = new Set(['assignments.put', 'profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
+export const WRITES = new Set(['study.put', 'assignments.put', 'profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
 // Used by both the pre-parse replay lookup and the final calendar save. No
 // time-dependent parsing belongs here: exact original bytes establish identity.
 export function validateCalendarFingerprint(data) {
@@ -61,6 +61,30 @@ export function validateCalendarFingerprint(data) {
 }
 export function validateWrite(op, data) {
   switch (op) {
+    case 'study.put': {
+      object(data,['course_id','session_id','topic','question','response','assistance','test_only','next_step','sources','criteria']);
+      if(typeof data.test_only!=='boolean')fail('test_scope_required');
+      const response=string(data.response,4000,{empty:true,multiline:true});
+      if(!Array.isArray(data.sources)||!data.sources.length||data.sources.length>3)fail('invalid_study_sources');
+      const sources=data.sources.map(ref=>{
+        object(ref,['material_id','revision','start','end']);
+        const source={material_id:id(ref.material_id),revision:revision(ref.revision),start:revision(ref.start),end:revision(ref.end)};
+        if(source.revision<1||source.end<=source.start||source.end-source.start>2000)fail('invalid_source_range');
+        return source;
+      });
+      if(new Set(sources.map(r=>`${r.material_id}:${r.start}:${r.end}`)).size!==sources.length)fail('duplicate_source');
+      if(!Array.isArray(data.criteria)||data.criteria.length>6)fail('invalid_study_criteria');
+      const criteria=data.criteria.map(c=>{
+        object(c,['criterion','verdict','evidence_quote','reason']);
+        const value={criterion:string(c.criterion,300),verdict:enumeration(c.verdict,['met','partial','not_met','not_evidenced']),evidence_quote:string(c.evidence_quote,1000,{empty:true,multiline:true}),reason:string(c.reason,600,{multiline:true})};
+        if(value.evidence_quote&&!response.includes(value.evidence_quote))fail('response_evidence_mismatch');
+        if(value.verdict!=='not_evidenced'&&!value.evidence_quote.trim())fail('response_evidence_required');
+        return value;
+      });
+      if(new Set(criteria.map(c=>c.criterion.trim().toLowerCase())).size!==criteria.length)fail('duplicate_criterion');
+      const value={course_id:courseId(data.course_id),session_id:id(data.session_id),topic:string(data.topic,200),question:string(data.question,1200,{multiline:true}),response,assistance:enumeration(data.assistance,['independent','hints','worked_example']),test_only:data.test_only,next_step:string(data.next_step,2000,{multiline:true}),sources,criteria};
+      return {kind:'study_sessions',id:`${value.course_id}:${value.session_id}`,value};
+    }
     case 'assignments.put': {
       object(data,['id','course_id','title','due_at','all_day']);
       if(typeof data.all_day!=='boolean')fail('invalid_event');
@@ -175,6 +199,7 @@ export function validateWrite(op, data) {
 }
 export function validateRead(op, data) {
   const fields = {
+    'study.get':['course_id','session_id'], 'study.material':['course_id','material_id','revision','start'], 'study.deadlines':['course_id','limit','cursor'], 'study.receipt':['operation_id'],
     'daily.get': [], 'assignments.list':['course_id','limit','cursor'], 'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
     'materials.list': ['course_id', 'limit', 'cursor'], 'materials.get': ['id'],
     'progress.list': ['course_id', 'status', 'limit', 'cursor'],
@@ -186,7 +211,10 @@ export function validateRead(op, data) {
   }[op];
   if (!fields) fail('unknown_operation', 404);
   object(data, fields);
-  for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id']) if (data[key] !== undefined) id(data[key]);
+  for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id','material_id']) if (data[key] !== undefined) id(data[key]);
+  if(['study.get','study.material','study.deadlines'].includes(op)&&data.course_id===undefined)fail('invalid_id');
+  if(op==='study.material'){id(data.material_id);revision(data.revision);if(data.revision<1)fail('invalid_revision');if(data.start!==undefined)revision(data.start);}
+  if(op==='study.receipt')operationId(data.operation_id);
   if (['materials.get', 'google_selection.get'].includes(op) && data.id === undefined) fail('invalid_id');
   if (op === 'learning.get' && data.course_id === undefined) fail('invalid_id');
   if (op === 'receipt.get') operationId(data.operation_id);

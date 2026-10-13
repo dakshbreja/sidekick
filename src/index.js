@@ -1,4 +1,5 @@
 import {tutorConfigured} from './tutor.js';
+import {studyProtocol} from './study-connector.js';
 import {APP_PATHS} from './workspace-pages.js';
 import {schoolFeedsEnabled} from './school-feed.js';
 import {authenticate} from './auth.js';
@@ -49,6 +50,20 @@ export default {
       if(expectedWorkspace && expectedWorkspace!==identity.tenantId) throw new HttpError('workspace_changed',403);
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
+      }
+      if(path==='/api/study-connector-preview'){
+        // Same-account developer preview only. Never interpret an Access
+        // browser assertion as a delegated Claude/ChatGPT authorization.
+        if(env.STUDY_CONNECTOR_PREVIEW!=='true')throw new HttpError('not_found',404);
+        if(request.method!=='POST')throw new HttpError('method_not_allowed',405);
+        if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
+        const result=await studyProtocol(await readJSON(request,40000),{dispatch,scopes:['study:read','study:write']});
+        return result===null?new Response(null,{status:202,headers:{'Cache-Control':'no-store'}}):json(result);
+      }
+      if(path==='/api/study' && ['GET','PUT'].includes(request.method)){
+        if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
+        if(request.method==='GET')return respond(await dispatch('study.get',queryData(url,['course_id','session_id'])));
+        const packet=writePacket(await readJSON(request,40000));return respond(await dispatch('study.put',packet.data,packet));
       }
       if(path==='/api/tutor' && ['GET','POST'].includes(request.method)){
         if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);

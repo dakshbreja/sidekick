@@ -2,6 +2,14 @@
 
 Status date: October 13, 2026.
 
+## Shared study connector — local implementation, not live linking
+
+The next local checkpoint adds seven bounded study tools, versioned source reads, criterion-level written-response checkpoints, exact save/receipt recovery, and website readback. It reuses the existing student storage and authenticated ownership boundary. The Tutor page displays the shared checkpoint; newer real checkpoints can enter the website tutor's bounded context only when their source versions are selected. Synthetic checkpoints never enter that learner context. The adapter preview is disabled by default, the installed plugin is still instruction-only, and no remote OAuth grant or public MCP route has been enabled. No model call, private-data import or deployment was performed for this checkpoint. See [STUDY-CONNECTOR.md](STUDY-CONNECTOR.md).
+
+The earlier controlled deeper-teaching test failed: the current model/prompt ignored six written-response cases and repeated multiple-choice teaching. The new checkpoint contract stores evidence and unverified assistant feedback; it does not itself solve or claim to validate semantic grading. Remote authorization, actual Claude-host testing, and written-assessment model evaluations remain required.
+
+Verification for this checkpoint: **337 automated tests passed** with concurrency two, including 11 connector checks/subchecks; Worker dry-run build, executable bundle, private-denylist scan and plugin audit passed. The rendered loopback demo saved a synthetic partial-response checkpoint through the protocol, displayed it on Tutor, retained exact text through reload, and showed an empty checkpoint after opening the second account's saved session. No real model quality claim follows from these synthetic contract tests.
+
 The private operator tutor is enabled again after the lesson-generation repair. It is a course-text teaching preview with saved sessions and recognition checks, not the full personal Bridge or a general-student release. Workspaces remain separate and initially empty. No credentials or bulk personal Bridge records were imported; the owner later explicitly authorized the bounded material test below.
 
 ## Website tutor — repaired and enabled — October 13, 2026

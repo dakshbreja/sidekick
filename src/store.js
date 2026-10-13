@@ -1,4 +1,5 @@
 import {initializeTutor,tutorExport,clearTutor,TutorState} from './tutor.js';
+import {readStudy,prepareStudy} from './study.js';
 import {initializeSchoolFeeds,feedRows,publicFeed} from './school-feed-state.js';
 import {dailyDashboard,schoolItems} from './daily-dashboard.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
@@ -169,6 +170,7 @@ export class StudentStore {
   }
   read(meta, op, data) {
     const common = { ok: true, account_revision: meta.account_revision };
+    if(op.startsWith('study.'))return readStudy(this,meta,op,data);
     if (op === 'daily.get') return {...dailyDashboard(this,{now:Date.parse(this.clock())}),account_revision:meta.account_revision};
     if (op === 'account.export') {
       const exported = this.emptyExport();
@@ -223,7 +225,7 @@ export class StudentStore {
     });
     return { ...common, records, complete: filtered.length <= limit, next_cursor: filtered.length > limit ? records.at(-1).id : null };
   }
-  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [], assignments: [], school_feeds: [], tutor_sessions: [] }; }
+  emptyExport() { return { profile: null, courses: [], materials: [], progress: [], learning: [], connections: [], calendar: [], google_selection: [], google_calendar_snapshots: [], assignments: [], school_feeds: [], tutor_sessions: [], study_sessions: [] }; }
   write(meta, message, input, requestHash) {
     const saved = this.row('SELECT request_hash, body FROM operations WHERE operation_id = ?', message.operationId);
     if (saved) {
@@ -255,6 +257,7 @@ export class StudentStore {
     }
     if (message.expectedRevision !== (old?.revision ?? 0)) fail('revision_conflict', 409);
     this.requireCourse(input.value.course_id);
+    if(input.kind==='study_sessions')input={...input,value:prepareStudy(this,input.value)};
     if(input.kind==='progress' && input.id.startsWith('daily_')){
       const item=schoolItems(this).find(item=>item.id===input.value.assignment_id);
       if(!item || item.category!=='deadline' || input.id!=='daily_'+item.id || item.course_id!==input.value.course_id || item.title!==input.value.title)fail('assignment_changed',409);
@@ -268,7 +271,7 @@ export class StudentStore {
       })())) fail('calendar_source_already_imported', 409);
     }
     if (old) {
-      const immutable = input.kind === 'courses' ? ['code', 'section', 'term_id'] : input.kind === 'connections' ? ['provider', 'site_url'] : ['course_id', 'assignment_id', 'source_id', 'provider'];
+      const immutable = input.kind === 'study_sessions' ? ['course_id','session_id','test_only'] : input.kind === 'courses' ? ['code', 'section', 'term_id'] : input.kind === 'connections' ? ['provider', 'site_url'] : ['course_id', 'assignment_id', 'source_id', 'provider'];
       if (immutable.some((key) => old[key] !== input.value[key])) fail('immutable_identity', 409);
     }
     const now = this.clock();
