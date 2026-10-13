@@ -27,6 +27,9 @@ async function reconcile(){await page.locator('#reconcile').click();await page.w
 try{
  for(let attempt=0;attempt<100;attempt++){if(demo.exitCode!==null)throw new Error(demoLog);try{if(demoLog.includes('Synthetic-only School Bridge: '+root) && (await fetch(root+'/health')).ok)break;}catch{}if(attempt===99)throw new Error('Synthetic demo startup timed out');await new Promise(r=>setTimeout(r,100));}
  await launch();assert.equal((await snapshot()).account_revision,0);
+ for(const target of ['#calendar-today-status','#calendar-setup-status']){assert.match(await page.locator(target).innerText(),/Google Calendar setup pending/);assert.equal(await page.locator(target+' [data-calendar-stage=setup_pending]').count(),1);}
+ await page.screenshot({path:join(evidence,'calendar-operator-setup-pending.png'),fullPage:true});
+ passed.push('calendar setup remains visible in Today and Sources with disabled Google and empty workspace');
  await page.locator('#profile-form [name=consent]').check();await submit('#profile-form',{display_name:'Synthetic Student A',timezone:'America/New_York'});
  await submit('#course-form',{code:'SYN 101',title:'Synthetic course',section:'A',term_id:'fall-2026'});
  await submit('#connection-form',{site_url:'https://school.example.invalid'});
@@ -62,6 +65,14 @@ try{
  await page.route('**/api/google/disconnect',route=>{disconnectPacket=route.request().postDataJSON();googleState={...googleState,status:'disconnected',authorized:false,revision:4};return route.fulfill({json:{ok:true,connection:googleState}});});
  await page.route('https://accounts.google.com/**',route=>{googleNavigations++;return route.fulfill({contentType:'text/html',body:'Synthetic consent navigation captured; no provider contacted.'});});
  await page.reload();await ready();
+ assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=consent_pending]').count(),1);
+ // A connector outage must not stop unrelated profile/course/material readback.
+ await page.route('**/api/google/status?*',route=>route.fulfill({status:503,json:{ok:false,error:'google_connection_unavailable'}}));
+ await page.reload();await ready();assert.match(await page.locator('#courses').innerText(),/SYN 101/);assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=unavailable]').count(),1);assert.equal(await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).count(),0);
+ await page.unroute('**/api/google/status?*');await page.route('**/api/google/status?*',route=>route.fulfill({status:403,json:{ok:false,error:'workspace_changed'}}));await page.reload();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('sign-in changed'));assert.equal(await page.locator('#courses .row').count(),0);assert.equal(await page.locator('#calendar-today-status .row').count(),0);
+ await page.unroute('**/api/google/status?*');await page.route('**/api/google/status?*',route=>route.fulfill({json:{ok:true,connection:googleState}}));
+ await page.reload();await ready();
+ passed.push('calendar status outage preserves workspace readback and offers no unsafe consent action; identity errors still fail closed');
  await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Review and check'));assert.equal(googleNavigations,0);
  await page.getByRole('checkbox',{name:/Allow read-only access/}).check();
@@ -69,7 +80,7 @@ try{
  await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).click();await page.waitForURL('https://accounts.google.com/**');assert.equal(googleNavigations,1);
  assert.equal(consentPacket.connection_id,source);assert.equal(consentPacket.expected_revision,0);assert.equal(typeof consentPacket.attempt_id,'string');
  googleState={...googleState,status:'authorized_not_synced',authorized:true,revision:3};
- await page.goto(root);await ready();assert.match(await page.locator('#connections').innerText(),/Authorized; choose calendars below. No events synced yet/);
+ await page.goto(root);await ready();assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=unselected]').count(),1);assert.match(await page.locator('#connections').innerText(),/Authorized; choose calendars below. No events synced yet/);
  let calendarPages=0;
  await page.route('**/api/google/calendars?*',route=>{calendarPages++;return route.fulfill({json:{ok:true,live_sync:false,page:{items:[{id:'synthetic_calendar_'+calendarPages,summary:calendarPages===1?'<script>Synthetic literal calendar</script>':'Synthetic second calendar',timeZone:'UTC',accessRole:'owner'}],next_page_token:calendarPages===1?'synthetic_page_2':null,collection_complete:calendarPages===2}}});});
  await page.getByRole('button',{name:'Show Google calendars',exact:true}).click();
@@ -84,17 +95,24 @@ try{
  await page.getByRole('button',{name:'Save calendar selection',exact:true}).click();
  await page.waitForFunction(()=>!document.querySelector('#recovery').hidden);assert.equal(selectionWrites,1);
  assert.deepEqual(googleSelection.record.calendar_ids,['synthetic_calendar_1']);
- await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/1 selected/);
+ await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/1 selected/);assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=setup_pending]').count(),1);
  await reconcile();assert.equal(selectionWrites,1);assert.equal((await stored()).length,0);
  await page.screenshot({path:join(evidence,'google-calendar-selection.png'),fullPage:true});
  await page.route('**/api/google/upcoming?*',route=>route.fulfill({json:{ok:true,snapshot_complete:true,last_successful_sync:new Date().toISOString(),freshness:'stale',coverage:{complete:false,warnings:[{code:'unsupported_recurrence',count:1}]},events:[{source_event_id:'synthetic_event',occurrence_id:'synthetic_occurrence',title:'<script>Synthetic all-day class</script>',start:'2026-11-02',end:'2026-11-04',all_day:true,status:'confirmed'}]}}));
  googleState={...googleState,status:'authorized',collection:{automatic_enabled:true,scheduler:{status:'scheduled',next_run_at:Date.now()+60000,error:null},calendars:[{calendar_id:'synthetic_calendar_1',name:'<script>Synthetic literal calendar</script>',status:'idle',snapshot_complete:true,freshness:'recent',last_successful_sync:new Date().toISOString()}]}};
- await page.reload();await ready();const collectionText=await page.locator('.google-collection-status').innerText();assert.match(collectionText,/Latest download complete/);assert.match(collectionText,/Recently checked/);assert.match(collectionText,/<script>Synthetic literal calendar<\/script>/);assert.doesNotMatch(await page.locator('#connections').innerText(),/no events synced yet/i);assert.match(await page.locator('#google-events').innerText(),/<script>Synthetic all-day class<\/script>/);assert.match(await page.locator('#google-events').innerText(),/2026-11-02 · All day through 2026-11-03/);assert.match(await page.locator('#google-source-coverage').innerText(),/Some events or recurring dates could not be shown/);assert.match(await page.locator('#google-source-coverage').innerText(),/out of date/);
+ await page.reload();await ready();assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=partial]').count(),1);const collectionText=await page.locator('.google-collection-status').innerText();assert.match(collectionText,/Latest download complete/);assert.match(collectionText,/Recently checked/);assert.match(collectionText,/<script>Synthetic literal calendar<\/script>/);assert.doesNotMatch(await page.locator('#connections').innerText(),/no events synced yet/i);assert.match(await page.locator('#google-events').innerText(),/<script>Synthetic all-day class<\/script>/);assert.match(await page.locator('#google-events').innerText(),/2026-11-02 · All day through 2026-11-03/);assert.match(await page.locator('#google-source-coverage').innerText(),/Some events or recurring dates could not be shown/);assert.match(await page.locator('#google-source-coverage').innerText(),/out of date/);
+ await page.unroute('**/api/google/upcoming?*');await page.route('**/api/google/upcoming?*',route=>route.fulfill({json:{ok:true,snapshot_complete:true,last_successful_sync:new Date().toISOString(),freshness:'recent',coverage:{complete:true},events:[]}}));
+ await page.reload();await ready();assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=ready]').count(),1);
+ googleState.collection.calendars[0].freshness='stale';await page.reload();await ready();assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=stale]').count(),1);
+ googleState.collection.calendars[0].snapshot_complete=false;googleState.collection.calendars[0].last_successful_sync=null;await page.reload();await ready();assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=syncing]').count(),1);
+ googleState.collection.calendars[0].snapshot_complete=true;googleState.collection.calendars[0].last_successful_sync=new Date().toISOString();
+ passed.push('calendar milestone: consent, choice, collection setup, initial sync, ready, stale and limited coverage reflect server evidence');
  googleState.collection.calendars[0].status='backoff';googleState.collection.calendars[0].freshness='stale';googleState.collection.scheduler.error='collection_global_limit';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Saved snapshot may be out of date/);assert.match(await page.locator('.google-collection-status').innerText(),/resume automatically/);
  googleState.collection.scheduler={status:'paused',next_run_at:null,error:'collection_unavailable'};googleState.collection.calendars[0].status='paused';await page.reload();await ready();assert.match(await page.locator('.google-collection-status').innerText(),/Checks paused after repeated failures/);
  await page.screenshot({path:join(evidence,'google-collection-status.png'),fullPage:true});passed.push('synthetic collection UI: literal names/events, all-day exclusive ends, incomplete recurrence, complete-check date, stale snapshot, request-limit wait and paused scheduler');
  delete googleState.collection;googleState.status='authorized_not_synced';await page.reload();await ready();
- await page.getByRole('button',{name:'Clear selection',exact:true}).click();
+ const kept=page.getByRole('checkbox',{name:'Keep <script>Synthetic literal calendar</script>',exact:true});await kept.uncheck();await kept.check();
+ await page.getByRole('button',{name:'Clear selection',exact:true}).click();assert.equal(await kept.isChecked(),false);
  assert.deepEqual(googleSelection.record.calendar_ids,['synthetic_calendar_1']);
  await page.getByRole('button',{name:'Save calendar selection',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar selection saved and verified'));
@@ -105,18 +123,22 @@ try{
  await page.unroute('**/api/google/calendars?*');
  await page.getByRole('button',{name:'Remove saved Google access',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Saved Google access removed locally'));
- assert.equal(disconnectPacket.expected_revision,3);assert.match(await page.locator('#connections').innerText(),/Saved access removed/);
+ assert.equal(disconnectPacket.expected_revision,3);assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=disconnected]').count(),1);assert.match(await page.locator('#connections').innerText(),/Saved access removed/);
  await page.reload();await ready();await reconcile();assert.equal(selectionWrites,4);assert.equal((await stored()).length,0);
  assert.match(await page.locator('#notice').innerText(),/A pending calendar selection was not saved/);
  assert.equal(googleSelection.revision,2);
  await page.screenshot({path:join(evidence,'google-rejected-selection.png'),fullPage:true});
  passed.push('interrupted selection followed by disconnect: exact replay, terminal rejection receipt and explicit not-applied message');
  googleState={...googleState,status:'authorized',authorized:true,revision:5};
+ googleSelection={...googleSelection,record:{calendar_ids:['synthetic_calendar_1','synthetic_calendar_2'],calendars:[{id:'synthetic_calendar_1',summary:'Saved first calendar'},{id:'synthetic_calendar_2',summary:'Saved second calendar'}]}};
+ await page.reload();await ready();await page.getByRole('checkbox',{name:'Keep Saved first calendar',exact:true}).uncheck();await page.getByRole('button',{name:'Save calendar selection',exact:true}).click();await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Calendar selection saved and verified'));assert.deepEqual(googleSelection.record.calendar_ids,['synthetic_calendar_2']);
+ passed.push('saved calendar choice can be removed individually after reload without another provider discovery');
+
  await page.route('**/api/google/revoke',route=>{const packet=route.request().postDataJSON();assert.equal(packet.connection_id,source);assert.equal(packet.expected_revision,5);assert.ok(packet.attempt_id);googleState={...googleState,status:'revoking',authorized:false,authorization_blocked:true,revocation:{state:'pending'}};return route.fulfill({json:{ok:true,revocation:googleState.revocation}});});
  await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/including its other connections/);
  await page.getByRole('button',{name:'Revoke Google permission and disconnect',exact:true}).click();
  await page.waitForFunction(()=>document.querySelector('#notice').textContent.includes('Google permission removal requested'));
- assert.match(await page.locator('#connections').innerText(),/queued or retrying automatically/);assert.equal(await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).count(),0);
+ assert.match(await page.locator('#connections').innerText(),/queued or retrying automatically/);assert.equal(await page.locator('#calendar-today-status [data-calendar-stage=removing]').count(),1);assert.equal(await page.getByRole('button',{name:'Authorize Google Calendar',exact:true}).count(),0);
  googleState={...googleState,status:'disconnected',authorization_blocked:false,revocation:{state:'confirmed'}};await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/Google confirmed the permission removal/);
  googleState.revocation={state:'unconfirmed'};await page.reload();await ready();assert.match(await page.locator('#connections').innerText(),/permission removal is unconfirmed/);assert.equal(await page.getByRole('link',{name:'Review Google Account connections'}).getAttribute('href'),'https://myaccount.google.com/connections');
  await page.screenshot({path:join(evidence,'google-removal-status.png'),fullPage:true});await page.unroute('**/api/google/revoke');

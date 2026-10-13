@@ -1,13 +1,13 @@
 # Local and cloud development handoff
 
-Updated October 12, 2026. Copyright 2026 Daksh Breja. All rights reserved.
+Updated October 13, 2026. Copyright 2026 Daksh Breja. All rights reserved.
 
 The owner requested this existing local chat to handle Mac/browser setup while retaining the cloud chat for cloud development. Both work on the same private community repository, with separate Git branches. Neither is the personal School Bridge.
 
 | Role | Chat and branch |
 |---|---|
 | Local Mac and signed-in browser setup | [Audit School Bridge readiness](codex://threads/01a127fb-eadc-70b1-a69b-efcd27e7f3a5), `codex/local-community-20261012` |
-| Cloud development and Linux checks | [Continue the School Bridge Community foundation in the sele…](https://chatgpt.com/local/01a12ecc-b450-7532-914b-3a763fecc0d0), latest reviewed branch `codex/plugin-foundation-20261012` |
+| Cloud development and Linux checks | [Continue the School Bridge Community foundation in the sele…](https://chatgpt.com/local/01a12ecc-b450-7532-914b-3a763fecc0d0), continuation branch `codex/cloud-calendar-status-20261013` (earlier foundation: `codex/plugin-foundation-20261012`) |
 
 The local branch starts at cloud commit `1dc5d248d1654a6fd47c2736dfb42f1feadfbd92`, incorporating recovery PR #1, private sign-in preparation PR #2 and plugin PR #3. All three PRs remain open and unmerged. Local work must push its own branch, never overwrite a cloud branch or implicitly merge into main. Fetch and review new commits before transferring later changes. Credentials, browser sessions and runtime data do not travel between these environments through Git.
 
@@ -32,6 +32,20 @@ Chrome automation returned `ERR_BLOCKED_BY_CLIENT` when opening the loopback add
 
 The local chat could read the owner's authenticated Cloudflare browser tab at Create an app. This verifies available browser access, not a deployment or Access configuration. No provider setting was changed by this local setup.
 
-## Next hosted step
+## Calendar delivery continuation, October 13
 
-Follow PRIVATE-SIGNIN.md to prepare a separate community Worker and dedicated whole-app Access policy. Before making the hosted change, review the exact Worker/address, operator-only allowlist, session duration and dedicated secret handling. Existing account-wide policies and personal applications remain outside the change. Real sign-in, revocation, source connectors and pilot admission are still outstanding; local success does not establish them.
+The local handoff reports that source commit `7469cd0995a25e9c3790b749959f2dc6828eef29` is deployed to the separate private community Worker, including its scheduler binding and safe logging. Two operator-controlled accounts retained separate synthetic records after reload. Exact-head push CI [38325896709](https://github.com/dakshbreja/school-bridge-community/actions/runs/38325896709) and PR CI [38325900567](https://github.com/dakshbreja/school-bridge-community/actions/runs/38325900567) passed. These are local-chat reported checkpoints, not new cloud inspection of hosting. Do not repeat the old hosting setup above.
+
+Cloud continuation branch: `codex/cloud-calendar-status-20261013`, based on **that exact commit**, targeting `codex/local-community-20261012` in a separate draft PR. Original branches and PRs are preserved. This pass makes calendar progress visible in Today and Sources even with Google disabled, using existing capabilities, authorization, saved selection, completed collection and actual projection coverage. It fixes connector-read outages blocking unrelated workspace refresh and adds individual saved-calendar removal after reload without another provider discovery. It adds no new data storage, provider permissions, collection enablement, deployment or AI spending.
+
+Verification: `npm ci --ignore-scripts --include=dev --include=optional`; full `npm run check` passed **301 tests**, built-in privacy scan, plugin audit, Wrangler dry-run and deployment-artifact execution. Rendered deployment-bundle Chromium **154.0.8037.57** passed **18 scenarios**, including visible disabled setup, consent/choice/sync/current/stale/partial/removal states, connector outage with usable courses, identity-error rejection, individual saved-choice removal, response-loss receipt recovery, restart, A/B separation, export and deletion. Google browser responses are intercepted synthetic fixtures; they are not live-provider evidence. Synthetic screenshots/report are outside Git under `/workspace/work/calendar-browser-final`; CI publishes its own private seven-day browser evidence. No personal denylist was requested or imported into cloud.
+
+### Bring the code back locally
+
+Fetch only this repository and review the draft diff against `codex/local-community-20261012`. If local work advanced, merge the continuation branch into the local branch after reviewing/resolving conflicts; never reset or force-push either branch. Rerun locked install and checks locally. The cloud branch does not deploy and must not be deployed using blank repository defaults. Use the existing protected external deployment configuration only after local review. The new status copy will not appear on the hosted page until that reviewed update is deployed locally.
+
+### Local provider setup still required
+
+The owner approved a dedicated community Google project/client, read-only Calendar scopes, Production mode and a disposable test calendar. The local handoff reports the project/web client already created and the exact protected-host `/api/google/callback` registered; its downloaded credential remains securely on the Mac outside Git. **Do not send credentials, cookies, actual host configuration or personal Bridge data to cloud/chat.**
+
+Continue locally: finish Google consent-screen Production mode, Calendar API and the two documented read-only scopes; install dedicated community client/encryption settings in the existing protected Worker configuration and verify flags/bindings/logging. Then exercise real consent through Access, reviewed calendar selection, initial and incremental sync, recurring/all-day coverage, refresh, revoke, reconnect and two-account isolation with disposable events. Verify disabled/expired/denied access, response loss, deletion and removal propagation. Do not label a registration, saved permission, selection or synthetic test as successful live sync. Broader student admission, restore/load controls and the rest of PRODUCT-PLAN.md remain unfinished.

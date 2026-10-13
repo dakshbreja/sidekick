@@ -1,6 +1,6 @@
 # Foundation status
 
-Status date: October 12, 2026.
+Status date: October 13, 2026.
 
 The clean community foundation is implemented locally. It supports separate, initially empty student stores and manual onboarding/imports. It is not deployed for real students and does not provide the full feature set of the personal School Bridge.
 
@@ -70,14 +70,14 @@ The commands print test counts for the current checkout. A passing suite establi
 ## Not implemented or not established
 
 - Real-student admission, university verification or public availability. An approved two-account operator-controlled hosted test is active; its actual evidence is recorded below.
-- Live Google Calendar authorization/collection and eLC integration. Google consent, credential storage, refresh and scheduled collection are implemented behind disabled gates; provider revocation and live verification remain.
+- Live Google Calendar authorization/collection and eLC integration. Google consent, credential storage, refresh, reviewed selection, scheduled collection, upcoming projection and durable provider revocation are implemented behind disabled gates; real-provider verification remains.
 - Browser collectors, general background queues, Drive delivery, lecture transcription or source-verified assignment reconciliation.
 - Complete deadline/announcement reconciliation, automatic daily briefings, reminders or proactive teaching.
 - AI-provider integration, source-backed tutoring, cross-client GPT/plugin rollout or access to other chats.
 - Whole-service abuse/spending controls, measured concurrency targets, backup restoration, key migration or sustained fault/uptime testing. Scheduled Google collection now has local and shared request budgets.
 - A finalized consent, support-access, retention, deletion-backup and incident-response policy suitable for real students.
 
-The student interface supports setup and manual data entry. Coursework and learning currently expose APIs, without a teaching or progress-management UI. Calendar entries are imports, not proof of current portal coverage. Saving a URL leaves its connector unavailable or needing authorization.
+The student interface supports setup and manual data entry. Coursework and learning currently expose APIs, without a teaching or progress-management UI. File imports are dated copies. The gated Google view labels collection freshness and projection coverage; neither proves current school-portal coverage. Saving a URL leaves its connector unavailable or needing authorization.
 
 The browser recovery outbox now persists pending packets across reloads and browser restart. Recovery after reconnect or reload is explicit and checks receipts before any exact replay. Its plaintext local-storage retention, per-account cleanup and shared-browser limitations are documented in [SECURITY.md](SECURITY.md#browser-recovery-outbox). Clearing site data loses recovery intent; receipt and record inspection remains necessary before recreating an uncertain write.
 
@@ -224,3 +224,13 @@ Current limits are 31 local days, 500 occurrences, 20,000 work steps and 500 KB 
 The calendar connector now includes a durable provider-removal flow alongside local-only disconnect. Collection stops at the committed removal request. Encrypted cleanup credentials remain private and are erased after confirmation, terminal failure, bounded retries/expiry, local abandonment or account deletion. Provider status distinguishes pending, confirmed and unconfirmed removal. New consent waits for outstanding cleanup; other unfinished consents are cancelled to prevent project-wide revocation racing a callback. The UI explains the scope, bounded retention and manual cleanup route. Test evidence and hosted activation status are recorded separately; implementation alone is not a live Google consent or sync.
 
 Verification: the full local gate passed **298 tests**, privacy/plugin checks, dry-run and deployment-artifact verification. The final lifecycle refinements passed **36 affected tests**. The rendered browser suite passed **14 scenarios** with no page errors, including pending/confirmed/unconfirmed permission removal. Actual workerd tests cover persisted alarms with collection disabled, retry/restart, failed-alarm transaction rollback, owner rejection and deletion during provider I/O. Provider HTTP is intercepted in these tests; live Google consent/removal remains unverified.
+
+### Visible calendar milestone, cloud continuation, October 13, 2026
+
+Continuation begins at local/deployed source `7469cd0995a25e9c3790b749959f2dc6828eef29`, in `codex/cloud-calendar-status-20261013`, targeting the local branch without overwriting it. The local handoff reports deployed scheduler/logging and two separate operator workspaces; Google remains disabled pending local provider setup. The dedicated Google project/client and callback are reported created locally, with credentials retained on the Mac. Earlier hosting/setup statements above are historical.
+
+Today and Sources now show explicit operator setup pending, student consent pending, calendars unselected, first sync in progress, recent complete checks, stale/partial/unavailable coverage and disconnected/removal states. Permission or registration alone cannot produce a ready label. Disabled capabilities report status unchecked; missing, stale or truncated projections cannot claim full coverage. Existing last-check dates and source warnings remain visible, and an empty view never proves nothing is due. Saved choices can be removed individually after reload without discovery; repeated choices are not given duplicate checkboxes.
+
+A concrete refresh failure was fixed: temporary Google status/selection errors previously prevented profile/course/material rendering. Such failures now produce an unavailable connection with no mutation controls while unrelated workspace reads complete. Authentication/account errors still abort the refresh, and the newest-refresh owner guard remains. No additional client storage or provider setup was introduced.
+
+Cloud locked installation and full check passed **301 tests** (three new status-contract tests), privacy/plugin audits, Wrangler dry-run and deployment-artifact checks. Rendered deployed-bundle Chromium **154.0.8037.57** passed **18 scenarios** with zero uncaught page errors; new checks cover disabled setup on empty workspaces, calendar lifecycle messages, outage/identity-error handling and individual saved-choice removal. Existing receipt loss, browser restart, isolation, export and deletion scenarios still pass. Screenshots and synthetic browser records stay outside the repository. Provider routes in browser tests are synthetic; workerd/SQLite tests intercept Google HTTP. No cloud deployment or real Google access occurred. Live consent, refresh, collection, revoke/reconnect and hosted failure/isolation gates remain local next steps; see [LOCAL-CLOUD-HANDOFF.md](LOCAL-CLOUD-HANDOFF.md).
