@@ -26,8 +26,8 @@ No account password, identity token or secret should be pasted into chat, an iss
 
 ## First: decisions we need
 
-- [ ] Confirm whether you have a Cloudflare account for the community project.
-- [ ] Choose an HTTPS hostname dedicated to this project. Its availability and routing have not been established.
+- [x] The owner reports being signed in to the Cloudflare dashboard. This execution environment still has no Cloudflare account connection or provider secret.
+- [ ] Choose the community Worker's built-in HTTPS address for the private test, or a dedicated custom hostname later. The owner reports no owned domain; buying one is not required for this test path. The actual address and routing are not yet established.
 - [ ] Name the project operator and who can administer hosting, identity and stored data.
 - [ ] Choose a narrow list of operator-controlled test accounts. Use made-up course information during testing.
 - [ ] Decide how long a sign-in session should last and how quickly removing access must take effect.
@@ -44,6 +44,16 @@ These choices prepare the next scoped setup. This guide does not grant access, c
 5. Once a separately protected test deployment is authorized and ready, perform the checks below with synthetic content. Passing local or GitHub tests does not prove this hosted setup works.
 
 Cloudflare's labels can change. Its [Access application documentation](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/) explains the hosting-side setup; the developer settings below describe what this repository expects.
+
+## No owned domain: the built-in private test path
+
+Cloudflare documents Access protection for a single Worker's production and preview addresses. Its built-in address does not require an owned custom domain. That address is public when merely enabled, so Access protection must be configured and verified before it is used for this project. [Official Worker Access guidance](https://developers.cloudflare.com/workers/configuration/cloudflare-access/).
+
+The reviewed sequence is: prepare the new community Worker with URL routing disabled, apply a dedicated Worker-level Access policy covering **All traffic**, restrict it to the agreed operator-controlled testers, supply the new community settings securely, then enable only the protected test address and verify signed-out/unauthorized requests. Keep preview routes disabled unless separately included and tested. Do not use an account-wide policy or change any personal Worker's settings. New Worker-level Access identity behavior must still be checked against this project's signed-assertion verifier in the actual hosted tests.
+
+This sequence is a plan, not completed provider setup. The repository's `workers_dev: false` and `preview_urls: false` are still in place. Creating the Worker, configuring the policy and enabling its route require the intended Cloudflare setup/credentials and a concrete reviewed change. Do not create a publicly reachable placeholder as a workaround.
+
+For the owner now: open Cloudflare's **Zero Trust** area and check whether a team is already set up. If it shows a setup/onboarding screen, note that state without sharing credentials; the next guided step will depend on it. A Zero Trust team must exist before using Worker Access. Do not change a team issuer already used by a personal deployment.
 
 ## What we must prove before a real student pilot
 
@@ -79,3 +89,5 @@ The current verification accepts signed human-user application assertions, rejec
 The cloud environment currently has no provider secrets or outbound provider identity. A real Access test needs the new application, approved hostname/routing, dedicated settings, operator-controlled test sign-ins and permitted access to that team's public signing-key endpoint. Any missing setup must be resolved through the intended configuration workflow; personal credentials are not a substitute.
 
 Run `npm run check` for synthetic identity, storage and privacy contracts, and `npm run test:browser` for rendered synthetic behavior. Neither command configures or proves real Access admission, enrollment or provider revocation. See [STATUS.md](STATUS.md) for completed evidence.
+
+`npm run check:signin` is a format-only preflight for an execution environment that intentionally supplies the three settings. It reports missing setting names, never their values, and makes no network requests. An empty foundation is expected to fail this check. Hosting-only Worker secrets are not automatically readable by this CLI; do not copy a secret into chat or CI to make it pass. Even a successful result leaves identity, hostname, Access policy and revocation verification explicitly false until actual hosted checks are performed.

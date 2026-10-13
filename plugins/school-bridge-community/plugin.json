@@ -1,0 +1,14 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "school-bridge-community",
+  "version": "0.1.1",
+  "description": "Guide manual School Bridge onboarding and uncertain-save recovery. Instruction-only draft; no live account tools.",
+  "author": {"name": "Daksh Breja"},
+  "repository": "https://github.com/dakshbreja/school-bridge-community",
+  "license": "UNLICENSED",
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/workspace-onboarding/SKILL.md"
+    }
+  }
+}
