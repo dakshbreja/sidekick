@@ -2,6 +2,10 @@
 
 Status date: October 13, 2026.
 
+## Course lookup repair — October 13, 2026
+
+Deployed explicit course-code/title lookup for `study_resume`, with unique authorized matches only, term/section disambiguation, returned opaque identity and compatibility with the earlier course-label-in-ID mistake. Writes remain exact-ID-only. Verification: all 350 automated tests passed, including 24 focused connector checks for real Worker/SQLite OAuth owner separation, unapproved courses, repeated terms/sections, incomplete pagination and save/revoke behavior. Build, executable bundle and privacy scan passed. Harder live Claude evaluation using the owner's existing MGMT5560 test excerpts is prepared; its course-specific access approval is pending. No claim of a completed actual-material evaluation yet.
+
 ## Claude deeper-teaching evaluation — October 13, 2026
 
 A bounded live Claude test assessed three fictional answers against the same retrieved synthetic rate-times-duration source. Expected outcomes were frozen before prompting; expected verdict labels were not supplied to Claude. All three matched: a correct number with a wrong operation and causal explanation saved as `incorrect`; correct arithmetic without situational or unit reasoning saved as `partial`; a fully explained calculation saved as `supported_response`. Feedback identified the actual missing or incorrect reasoning, and the complete response's next step called for a novel application before claiming transfer.

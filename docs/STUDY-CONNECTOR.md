@@ -22,6 +22,10 @@ The Tutor page reads the same checkpoint and displays its response, feedback and
 
 The existing transaction saves checkpoint, receipt and account revision together. Exact retries recover the original result even after a source changes. Changed packets with the same ID conflict; stale revisions fail. A process restart preserves the checkpoint. Account deletion removes current records and historical receipts. Checkpoint snapshots remain accessible in account exports until deletion, as do existing record histories.
 
+## Course identity lookup
+
+`study_resume` accepts either an opaque `course_id` or an exact course code/title in `course_query`, plus optional exact `term_id` and `section` filters. It searches only the caller's already-authorized course list, follows bounded pagination and refuses incomplete coverage. One exact match returns the checkpoint and `resolved_course.id` for subsequent source reads and saves. Repeated codes across terms/sections return `course_ambiguous` with only authorized course metadata; no checkpoint is selected. Unknown and unauthorized names share the same error. No fuzzy matching or implicit current-term preference is used. Older clients that put a code in `course_id` get the same unique-match resolution; actual opaque IDs take precedence. Other tools and all saves still require exact IDs.
+
 ## Local interfaces
 
 - `GET /api/study?course_id=...&session_id=...` (session optional): resume through the normal authenticated website boundary.

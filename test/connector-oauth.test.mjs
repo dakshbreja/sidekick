@@ -66,7 +66,7 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
   });
   await t.test('selected courses only; identical IDs are isolated by signed owner',async()=>{
     const courses=value(await rpc(a.tokens.access_token,'study_list_courses',{}));assert.equal(courses.records.length,1);assert.equal(courses.records[0].section,'a');
-    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'hidden'})).error,'course_access_denied');
+    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'hidden'})).error,'course_not_found_or_not_authorized');
     assert.match(value(await rpc(a.tokens.access_token,'study_read_material',{course_id:'shared',material_id:'notes',revision:1})).text,/Synthetic a/);
     assert.match(value(await rpc(b.tokens.access_token,'study_read_material',{course_id:'shared',material_id:'notes',revision:1})).text,/Synthetic b/);
     const forged=await rpc(a.tokens.access_token,'study_resume',{course_id:'shared',owner:owners.b});assert.equal(forged.result.isError,true);
@@ -78,6 +78,10 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_id:'shared'})).record,saved.record);
     assert.equal(value(await rpc(a.tokens.access_token,'study_save_checkpoint',packet)).replayed,true);
     assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_id:'shared'})).record,null);
+    assert.deepEqual(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'SHARED'})).record,saved.record);
+    assert.equal(value(await rpc(b.tokens.access_token,'study_resume',{course_query:'SHARED'})).record,null);
+    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'HIDDEN'})).error,'course_not_found_or_not_authorized');
+    assert.equal(value(await rpc(a.tokens.access_token,'study_resume',{course_query:'Synthetic b shared'})).error,'course_not_found_or_not_authorized');
     assert.equal(value(await rpc(b.tokens.access_token,'study_get_receipt',{operation_id:packet.operation_id})).error,'receipt_not_found');
   });
   await t.test('read-only consent denies writes even when client requested both scopes',async()=>{

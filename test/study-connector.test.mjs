@@ -55,6 +55,24 @@ test('real Worker/SQLite connector save, website readback, restart, identity iso
     assert.equal((await rpc('study_read_material',{...data,course_id:'another-course'})).error,'course_not_found');
     assert.equal((await rpc('study_read_material',{...data,revision:2})).error,'source_revision_conflict');
   });
+  await t.test('course names resolve uniquely and repeated terms or sections require clarification',async()=>{
+    const first=await rpc('study_resume',{course_query:'SYN 101'});
+    assert.equal(first.ok,true);assert.equal(first.resolved_course.id,'synthetic-course');
+    // Backward-compatible recovery for a model that still puts the code in course_id.
+    assert.equal((await rpc('study_resume',{course_id:'syn 101'})).resolved_course.id,'synthetic-course');
+    await req('/api/courses',{method:'PUT',body:write({id:'synthetic-course-2',code:'SYN101',title:'Synthetic second section',section:'other',term_id:'synthetic-term'})});
+    await req('/api/courses',{method:'PUT',body:write({id:'synthetic-course-3',code:'SYN101',title:'Synthetic later term',section:'a',term_id:'later-term'})});
+    const ambiguous=await rpc('study_resume',{course_query:'SYN101'});
+    assert.equal(ambiguous.error,'course_ambiguous');assert.equal(ambiguous.candidates.length,3);assert.equal(ambiguous.record,undefined);
+    assert.equal((await rpc('study_resume',{course_query:'SYN101',term_id:'synthetic-term'})).error,'course_ambiguous');
+    assert.equal((await rpc('study_resume',{course_query:'SYN101',term_id:'synthetic-term',section:'a'})).resolved_course.id,'synthetic-course');
+    assert.equal((await rpc('study_resume',{course_query:'Synthetic course a'})).resolved_course.id,'synthetic-course');
+    assert.equal((await rpc('study_resume',{course_query:'Synthetic course b'})).error,'course_not_found_or_not_authorized');
+    assert.equal((await rpc('study_resume',{course_query:'SYN10'})).error,'course_not_found_or_not_authorized');
+    assert.equal((await rpc('study_resume',{course_query:'SYN101',course_id:'synthetic-course'})).result.isError,true);
+    assert.equal((await rpc('study_resume',{course_id:'synthetic-course'})).resolved_course.id,'synthetic-course');
+    assert.equal((await rpc('study_resume',{course_query:'SYN101'},'b')).resolved_course.section,'b');
+  });
   await t.test('partial written reasoning saves through tools and appears in the website API without mastery credit',async()=>{
     saved=await rpc('study_save_checkpoint',packet);assert.equal(saved.ok,true);assert.equal(saved.revision,1);
     assert.equal(saved.record.assessment.outcome,'partial');assert.equal(saved.record.assessment.mastery,false);assert.equal(saved.record.assessment.authority,'assistant_report_unverified');
@@ -128,4 +146,14 @@ test('website continuation includes a newer real checkpoint only for selected so
   assert.equal(context(record,session,[{...sources[0],revision:2}]),null);
   assert.equal(context(record,{...session,updated_at:'2026-10-13T13:00:00.000Z'}),null);
   assert.equal(context(record,session,[{...sources[0],material_id:'another-material'}]),null);
+});
+
+test('course lookup does not select a first-page match when coverage is incomplete',async()=>{
+  let reads=0,lists=0;
+  const dispatch=async(op)=>{
+    if(op==='study.get'){reads++;return {ok:true};}
+    lists++;return {ok:true,records:[{id:'one',code:'SYN101',title:'Synthetic',term_id:'test',section:'a'}],complete:false,next_cursor:'same'};
+  };
+  const result=await studyProtocol(call('study_resume',{course_query:'SYN101'}),{dispatch,scopes:['study:read']});
+  assert.equal(result.result.structuredContent.error,'course_lookup_incomplete');assert.equal(reads,0);assert.equal(lists,2);
 });
