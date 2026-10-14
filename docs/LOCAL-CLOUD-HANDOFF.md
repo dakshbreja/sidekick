@@ -47,6 +47,14 @@ Prepare a five-minute demo using a fictional course/material and disposable cale
 
 Cloud cannot directly forward a chat message or deploy: no tool here controls the local thread/browser, and this runtime has no Cloudflare identity, protected deployment config or secrets. This committed handoff and PR are the transfer mechanism. Do not request credentials in chat to work around that limit. Student invitation, retention/recovery and real eLC gates remain before a later student pilot; they do not require a public launch for a fictional family demonstration.
 
+## Local weekend handoff completed — October 14, 2026
+
+PR #6 was reviewed and incorporated through `f1e76cf`; the Mac pilot smoke passed 83 checks and the private-reference scan passed. Current hosted Worker and connector versions match the reviewed product; no redeploy was required. Free plan and exact two-operator Access policy were observed. Fictional course/material/deadline, one free saved tutor lesson and a synced disposable Google event are ready in the first operator workspace. See the latest STATUS.md entry for evidence and limits.
+
+Five-minute presentation: sign in with the first operator account, open Dashboard for the fictional weekend deadline, Notes for the fictional coffee-cart lesson, Calendar for its separately synced disposable event and freshness, then Tutor → DEMO 101 / FAMILY-DEMO → Open saved session. The source citation, pending question and zero successful practice counts survive reload. Optional safeguard example: Tutor → SYN 303 / SOURCE-TEST → Show simulation checkpoints → Open saved session. Explain that missing source content is unassessed and hints remain recorded; this is a saved prior evaluation. Restore the normal view afterward. No fresh Claude grant is required for this demonstration. Do not use the real-material test course in the second operator workspace for this fictional presentation.
+
+The new demo lesson lives only in the explicitly labeled fictional course; it is not real progress. The demo Google event is notification-free and marked Free. No guests, additional accounts, paid fallback or public signup were enabled. Current private URL and screenshots were delivered directly to the owner and kept outside Git.
+
 ## Run locally
 
 With Node.js 24 or newer, run from the repository:

@@ -2,6 +2,16 @@
 
 Status date: October 14, 2026.
 
+## Private family demo verified locally — October 14, 2026
+
+Reviewed and fast-forwarded PR #6 through `f1e76cf` into the local continuation. Its changes are tests/documentation and test commands only; production source, dependencies and deployment configuration match the previously reviewed product. The pilot smoke passed **83 checks across nine suites** on the Mac; external private-reference scan passed with no findings. The full cloud suite remains prior evidence, not a new local full-suite run.
+
+Protected configuration and current Cloudflare deployment readback agree: main Worker version `4b481faf-21f5-4528-8681-2a75d6e909ee`, connector `c0ebfcd5-2000-460e-9da4-6a04360cd32a`. No missing product update was found, so no redundant deployment occurred. The signed-in dashboard shows Workers Free as the current plan. Access covers the Worker's production and preview destinations with one Allow policy containing only the two existing operator emails; no bypass policy or additional identity was added. Unauthenticated website access redirects to Access (302), while unauthenticated connector requests return 401. This does not claim a new signed-in unapproved-account or session-expiry test.
+
+Prepared fictional course, lesson and weekend deadline in one operator workspace. Save/readback and reload retained the course/material/deadline. One free hosted tutor lesson explained the source with a citation; reload reproduced the identical lesson, pending multiple-choice question, choice order and zero practice totals. No answer or learning achievement was recorded. A notification-free, availability-Free fictional event on the existing disposable Google calendar synced into the hosted calendar view with a recent complete check. No new provider grant or personal calendar/source was connected. The existing separate source-limited/hints simulation was reread as saved evidence, not presented as a new Claude inference. Temporary Claude access remains revoked.
+
+The family demonstration uses the owner's signed-in session and fictional records. The protected address, screenshots and identifiers remain in the local private handoff. General student admission, real eLC collection, hosted restoration/deletion reconciliation and retention/capacity gates remain open.
+
 ## Operator-release preparation and clean-directory recovery — October 14, 2026
 
 The owner selected the existing two operator accounts first, with a few invited users later. [OPERATOR-RELEASE.md](OPERATOR-RELEASE.md) specifies the protected local release/readback path, the no-public-signup boundary and the actual prerequisites for invitations. This cloud session has no hosting identity or protected deployment configuration; no deployment or access change was attempted.
