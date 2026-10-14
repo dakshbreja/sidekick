@@ -2,6 +2,12 @@
 
 Status date: October 14, 2026.
 
+## Operator-release preparation and clean-directory recovery — October 14, 2026
+
+The owner selected the existing two operator accounts first, with a few invited users later. [OPERATOR-RELEASE.md](OPERATOR-RELEASE.md) specifies the protected local release/readback path, the no-public-signup boundary and the actual prerequisites for invitations. This cloud session has no hosting identity or protected deployment configuration; no deployment or access change was attempted.
+
+Four focused synthetic recovery checks passed: quiesced SQLite state restores into a new directory with owner mapping, deleted-A tombstone/exact receipt and B data/replay intact. A separate pre-deletion snapshot deliberately demonstrates resurrection if restored without later deletion evidence. This is a known recovery-procedure hazard, not a fixed production safeguard or evidence of Cloudflare backup restoration. The independently retained deletion/revocation record and key/hosted recovery remain open gates. `npm run test:recovery` is included in the nine-suite pilot smoke; no live provider, real record or paid inference is involved. The final full check passed **363 checks**, built-in privacy scan (124 files/no findings), plugin audit, dry-run and executable bundle. No local rendered-browser check was rerun for this tests/docs-only change.
+
 ## Bounded cloud pilot-smoke pass — October 14, 2026
 
 From exact local checkpoint `ae95090526d276885233a5ec828587c89e18781e`, separate continuation `codex/cloud-pilot-smoke-20261014` reviews retention/deletion and restart recovery using synthetic fixtures only. No reproducible material implementation failure was found in this bounded pass; this is not a comprehensive security review. Production behavior is unchanged.

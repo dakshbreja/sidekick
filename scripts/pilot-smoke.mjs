@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 if (process.argv.length !== 2) throw new Error('Pilot smoke accepts no host, credentials or additional arguments.');
 const suites = [
   'test/runtime.test.mjs',
+  'test/recovery-runtime.test.mjs',
   'test/connector-oauth.test.mjs',
   'test/outbox.test.mjs',
   'test/google-state-runtime.test.mjs',

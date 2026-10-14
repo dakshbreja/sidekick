@@ -11,6 +11,7 @@
   "scripts": {
     "dev": "wrangler dev --local --ip 127.0.0.1",
     "test": "node --test test/*.test.mjs",
+    "test:recovery": "node --test test/recovery-runtime.test.mjs",
     "test:pilot": "node scripts/pilot-smoke.mjs",
     "test:runtime": "node --test test/runtime.test.mjs",
     "test:browser": "npm run build && node scripts/browser-check.mjs",

@@ -13,12 +13,13 @@ npm ci --ignore-scripts --include=dev --include=optional
 XDG_CONFIG_HOME=/tmp/school-bridge-pilot-config CI=true WRANGLER_SEND_METRICS=false npm run test:pilot
 ```
 
-Use a writable configuration directory outside Git. The command runs eight existing suites with two concurrent files, generated A/B identities, disposable SQLite/workerd, intercepted HTTP and a synthetic AI response. It accepts no hostname or credential arguments. A failed assertion or abnormal child exit fails the command; the final summary always marks external verification and student admission false. Tests remove their temporary stores during normal cleanup. If the process is forcibly killed, remove only its synthetic temporary test directories; never use a live store as a fixture. Normal suite output contains generated fixtures only; keep any captured logs outside Git.
+Use a writable configuration directory outside Git. The command runs nine synthetic suites with two concurrent files, generated A/B identities, disposable SQLite/workerd, intercepted HTTP and a synthetic AI response. It accepts no hostname or credential arguments. A failed assertion or abnormal child exit fails the command; the final summary always marks external verification and student admission false. Tests remove their temporary stores during normal cleanup. If the process is forcibly killed, remove only its synthetic temporary test directories; never use a live store as a fixture. Normal suite output contains generated fixtures only; keep any captured logs outside Git.
 
 | Covered path | Reused evidence |
 |---|---|
 | Two empty accounts, distinct records despite identical IDs, foreign reads/receipts denied, fresh exports | `runtime.test.mjs` |
 | Durable record/receipt replay across restart; fresh-revision deletion; deleted A stays retired across another restart while B survives | `runtime.test.mjs` |
+| Quiesced snapshot restored into a new directory; post-deletion tombstone and B receipts survive; old snapshot negative control exposes resurrection | `recovery-runtime.test.mjs` |
 | Calendar consent-state consumption, private-row deletion across restart, staged atomic collection, interrupted provider work | `google-state-runtime.test.mjs`, `google-collection-runtime.test.mjs` |
 | Bounded provider-removal retries, pending/confirmed/unconfirmed distinction, deletion during provider I/O | `google-revocation.test.mjs` |
 | Feed alarm survives restart, progress survives restart, private URL excluded from export, removal/deletion | `school-feed-runtime.test.mjs` |
@@ -27,6 +28,12 @@ Use a writable configuration directory outside Git. The command runs eight exist
 | Tutor exact retry without repeat inference, restart/readback, deletion/changed-source late-response fences and quotas | `tutor.test.mjs` (synthetic AI only) |
 
 This smoke is API/storage/contract evidence. It does not run a rendered browser or a real Claude/Google/eLC session. For final source validation run `npm run check` once; the existing CI separately runs `npm run test:browser` against the actual dry-run deployment bundle. No public deployment command is part of the smoke.
+
+## Clean-directory recovery drill
+
+Run `npm run test:recovery` for the four-check local snapshot drill. It shuts down workerd before copying synthetic SQLite state, restores into a new path and verifies A deletion plus B data/receipts/ownership. Generated identity material stays in the test process; only generated persistence is copied, and the temporary trees are removed afterward. No production configuration or live backup is accepted.
+
+The negative control deliberately restores the pre-deletion snapshot in an isolated fixture and confirms it contains A again. This is a passing test of a known unsafe recovery procedure, **not a fix or permission to use it**. The drill demonstrates snapshot portability with the same generated identity/key configuration. It does not implement Cloudflare point-in-time recovery, independently retained deletion records, key migration or restore after loss of keys. Keep restored services inaccessible until later deletions and revoked grants have been reconciled from an independent record and both accounts verified. If that record is missing, do not reopen the old backup to users.
 
 ## Retention and deletion inventory
 

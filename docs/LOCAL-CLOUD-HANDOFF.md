@@ -27,6 +27,12 @@ A bounded read of deletion/retention, OAuth retirement, source/tutor late-respon
 
 Bring back by fetching this continuation and reviewing the draft diff against the local branch. Merge only after local review, preserving newer local changes; never reset or force-push either branch. Locked install and `npm run test:pilot` reproduce the bounded check locally. No deployment is needed for this test/documentation pass. Preserve completed Google/Claude configuration; real eLC consent/browser tests, hosted recovery/retention, independent student admission and measured free-tier capacity remain external gates. The laptop can stay closed while cloud/CI runs.
 
+## Operator-release continuation — October 14, 2026
+
+The owner chose the existing **two operator accounts first**, with a few specifically invited users later. No access change or public signup is authorized now. OPERATOR-RELEASE.md gives the concrete local release/readback sequence and invitation prerequisites. Cloud still has no hosting credentials or local signed-in browser; do not transfer them here. The latest local head remains `ae95090526d276885233a5ec828587c89e18781e`.
+
+Continuation stays on `codex/cloud-pilot-smoke-20261014` / draft PR #6. Added `npm run test:recovery`: four passing synthetic checks copy only quiesced local state into a different directory, verify deleted A stays retired and B data/receipts/owner survive, and expose the **pre-deletion backup resurrection hazard** as an isolated negative control. That negative control is not a production recovery fix. Independently retained deletion/revocation records, key recovery and hosted restoration remain gates before student admission. The pilot smoke now includes this ninth suite; no production behavior or provider setting changed. One final `npm run check` passed **363 checks**, built-in privacy scan (124 files/no findings), plugin audit, dry-run and executable bundle. The focused four-check recovery run passed first. Logs remain outside Git in `/workspace/work/recovery-drill-20261014.log` and `/workspace/work/operator-release-check-20261014.log`.
+
 ## Run locally
 
 With Node.js 24 or newer, run from the repository:
