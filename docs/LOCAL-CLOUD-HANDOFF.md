@@ -11,6 +11,12 @@ The owner requested this existing local chat to handle Mac/browser setup while r
 
 The local branch starts at cloud commit `1dc5d248d1654a6fd47c2736dfb42f1feadfbd92`, incorporating recovery PR #1, private sign-in preparation PR #2 and plugin PR #3. All three PRs remain open and unmerged. Local work must push its own branch, never overwrite a cloud branch or implicitly merge into main. Fetch and review new commits before transferring later changes. Credentials, browser sessions and runtime data do not travel between these environments through Git.
 
+## Current continuation — October 14, 2026
+
+The owner requested moving ongoing work back to the existing cloud chat before laptop closure. Fetch `origin/codex/local-community-20261012` at this checkpoint and create a new continuation branch from it. Do not resume from the old calendar branch or repeat the historical provider setup below. The private website, Google Calendar and scoped Claude connector are deployed; current evidence and explicit limits are at the top of STATUS.md. The live source-gap, assistance-preservation, save/receipt and fresh-chat regression passed; its temporary grant is revoked. No live credentials, browser sessions or private evidence are included in Git.
+
+Next cloud-sized milestone: prepare a bounded private-pilot readiness pass using synthetic data only. Review the existing retention/deletion and restart/recovery behavior for concrete gaps; prioritize one reproducible failure or, if none is found, a concise executable two-student pilot smoke test and release checklist. Reuse existing tests, avoid broad refactors and repeated full-suite runs, and keep free-only/provider-neutral operation. Run focused tests and one final appropriate check, commit/push a separate continuation branch, and create a draft PR against `codex/local-community-20261012`. Update this handoff with the result. No deployment, new student access, live OAuth grants, personal Bridge reads or real school collection is authorized by this handoff. Real eLC consent and signed-in provider checks remain local/user-dependent. Existing public-release gates remain open.
+
 ## Run locally
 
 With Node.js 24 or newer, run from the repository:

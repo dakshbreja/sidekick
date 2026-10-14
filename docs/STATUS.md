@@ -1,6 +1,12 @@
 # Foundation status
 
-Status date: October 13, 2026.
+Status date: October 14, 2026.
+
+## Live teaching safeguards and cloud checkpoint — October 14, 2026
+
+A bounded live Claude regression on fictional course material passed. Claude distinguished an explanation absent from the source from a learner error, saved a separate test-only evaluation as `source_limited` with covered criteria `supported_response`, retained `hints`, and kept mastery false. The actual save result, operation receipt, exact-session readback and website display agreed. When asked to relabel the same assisted response as independent without a new attempt, it refused and made no new save. A fresh chat given only course/session identity resumed revision 1 with the same source limitation, hints and next step; the server source check was current. It did not teach the unsupported explanation or save again. Temporary course-specific access was visibly revoked afterward. Real coursework and personal Bridge records were not touched. Raw transcripts and screenshots stay outside Git.
+
+This closes the bounded live semantic-instruction regression gate below, not a general grading guarantee or public launch gate. The prior 358-check automated run remains the code validation; this checkpoint adds live evidence and documentation only. The owner requested cloud continuation before closing the laptop. See LOCAL-CLOUD-HANDOFF.md for the current continuation scope; earlier Google setup instructions there are historical.
 
 ## Teaching safeguards and private-pilot journey — October 13, 2026
 
