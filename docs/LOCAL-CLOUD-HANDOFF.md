@@ -1,13 +1,13 @@
 # Local and cloud development handoff
 
-Updated October 13, 2026. Copyright 2026 Daksh Breja. All rights reserved.
+Updated October 14, 2026. Copyright 2026 Daksh Breja. All rights reserved.
 
 The owner requested this existing local chat to handle Mac/browser setup while retaining the cloud chat for cloud development. Both work on the same private community repository, with separate Git branches. Neither is the personal School Bridge.
 
 | Role | Chat and branch |
 |---|---|
 | Local Mac and signed-in browser setup | [Audit School Bridge readiness](codex://threads/01a127fb-eadc-70b1-a69b-efcd27e7f3a5), `codex/local-community-20261012` |
-| Cloud development and Linux checks | [Continue the School Bridge Community foundation in the sele…](https://chatgpt.com/local/01a12ecc-b450-7532-914b-3a763fecc0d0), continuation branch `codex/cloud-calendar-status-20261013` (earlier foundation: `codex/plugin-foundation-20261012`) |
+| Cloud development and Linux checks | [Continue the School Bridge Community foundation in the sele…](https://chatgpt.com/local/01a12ecc-b450-7532-914b-3a763fecc0d0), current continuation `codex/cloud-pilot-smoke-20261014` (earlier calendar branch preserved) |
 
 The local branch starts at cloud commit `1dc5d248d1654a6fd47c2736dfb42f1feadfbd92`, incorporating recovery PR #1, private sign-in preparation PR #2 and plugin PR #3. All three PRs remain open and unmerged. Local work must push its own branch, never overwrite a cloud branch or implicitly merge into main. Fetch and review new commits before transferring later changes. Credentials, browser sessions and runtime data do not travel between these environments through Git.
 
@@ -16,6 +16,16 @@ The local branch starts at cloud commit `1dc5d248d1654a6fd47c2736dfb42f1feadfbd9
 The owner requested moving ongoing work back to the existing cloud chat before laptop closure. Fetch `origin/codex/local-community-20261012` at this checkpoint and create a new continuation branch from it. Do not resume from the old calendar branch or repeat the historical provider setup below. The private website, Google Calendar and scoped Claude connector are deployed; current evidence and explicit limits are at the top of STATUS.md. The live source-gap, assistance-preservation, save/receipt and fresh-chat regression passed; its temporary grant is revoked. No live credentials, browser sessions or private evidence are included in Git.
 
 Next cloud-sized milestone: prepare a bounded private-pilot readiness pass using synthetic data only. Review the existing retention/deletion and restart/recovery behavior for concrete gaps; prioritize one reproducible failure or, if none is found, a concise executable two-student pilot smoke test and release checklist. Reuse existing tests, avoid broad refactors and repeated full-suite runs, and keep free-only/provider-neutral operation. Run focused tests and one final appropriate check, commit/push a separate continuation branch, and create a draft PR against `codex/local-community-20261012`. Update this handoff with the result. No deployment, new student access, live OAuth grants, personal Bridge reads or real school collection is authorized by this handoff. Real eLC consent and signed-in provider checks remain local/user-dependent. Existing public-release gates remain open.
+
+## Cloud pilot-smoke result — October 14, 2026
+
+Continuation `codex/cloud-pilot-smoke-20261014` starts at exact pushed checkpoint `ae95090526d276885233a5ec828587c89e18781e` and targets `codex/local-community-20261012` in a separate draft PR. All older branches/PRs are preserved. The checkpoint's 358-check validation and live Claude results remain prior local evidence; this pass does not retest provider setup or contact a model.
+
+A bounded read of deletion/retention, OAuth retirement, source/tutor late-response fences and recovery found no reproducible material implementation failure. Added `npm run test:pilot`, reusing eight existing synthetic suites rather than changing production behavior. It passed **79 checks** in actual local workerd/SQLite and contracts, including a new deleted-account restart check: same tombstone/identity and deletion receipt, exact deletion replay, old receipts/reads/writes denied, B unchanged, and only the deletion receipt left in A's SQLite. This is a restart with the same storage, not a backup restore. The smoke summary never marks external gates verified or authorizes admission. The one final `npm run check` passed **359 checks**, built-in privacy scan (122 files, no findings), plugin audit, dry-run build and executable deployment bundle. No external private-reference denylist was supplied; no rendered-browser result is inferred from this command.
+
+[PILOT-CHECKLIST.md](PILOT-CHECKLIST.md) documents the executable command, test map, retention locations, free-only operation and remaining hosted/local/user-dependent gates. It distinguishes active-data cleanup from OAuth KV/backups, provider grants and offline-browser remnants, and archive from erasure. No new client storage, retention timers, deployment or provider setup was introduced. Synthetic logs remain outside Git at `/workspace/work/pilot-smoke-20261014.log` and `/workspace/work/pilot-final-check-20261014.log`; no personal denylist was requested or copied into cloud.
+
+Bring back by fetching this continuation and reviewing the draft diff against the local branch. Merge only after local review, preserving newer local changes; never reset or force-push either branch. Locked install and `npm run test:pilot` reproduce the bounded check locally. No deployment is needed for this test/documentation pass. Preserve completed Google/Claude configuration; real eLC consent/browser tests, hosted recovery/retention, independent student admission and measured free-tier capacity remain external gates. The laptop can stay closed while cloud/CI runs.
 
 ## Run locally
 

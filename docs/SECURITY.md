@@ -1,6 +1,6 @@
 # Security boundary and deployment checklist
 
-This is a private development foundation. Do not add real students until the pilot gates in STATUS.md have evidence. No public deployment or school-account access is configured.
+Repository defaults are disabled and private development only. The separate operator deployment has Google and a scoped Claude connector; current live evidence is in STATUS.md. Do not add real students until the pilot gates have evidence. See PILOT-CHECKLIST.md for the synthetic smoke and retention boundaries.
 
 ## Identity and storage
 
@@ -30,7 +30,7 @@ Account scoping protects application behavior, not access by another person usin
 
 ## Connectors
 
-A registered site is metadata only. No source URL is fetched, no credential is accepted, and no automatic integration is active. Future adapters must validate destinations, separate credentials per student, use least-privilege OAuth and protect state/PKCE, encrypt stored refresh credentials under a managed key, support disconnect/revocation, and report reauthorization honestly. Redirect and private-network protections must be tested before any user-supplied URL can cause an outbound request.
+A registered site is metadata only. Separate, explicitly consented Google and school-feed flows can collect when enabled; registering a site does not activate them. Connectors must validate destinations, separate credentials per student, use least-privilege OAuth and protect state/PKCE, encrypt stored refresh credentials under a managed key, support disconnect/revocation, and report reauthorization honestly. Redirect and private-network protections must be tested before any user-supplied URL can cause an outbound request.
 
 ## Safe development
 

@@ -322,6 +322,35 @@ test('actual workerd and SQLite isolate independent signed student workspaces', 
     assert.equal((await storage.exec('SELECT deleted FROM workspace_meta'))[0].deleted, 1);
   });
 
+  await t.test('deletion tombstone and exact recovery survive restart without resurrecting either content or old receipts', async () => {
+    const beforeA = await json(runtime, '/api/account/export');
+    const beforeB = await json(runtime, '/api/account/export', { student: 'b' });
+    const deletion = (await json(runtime, '/api/receipts/delete-student-a')).receipt;
+    const authFixture = runtime.authFixture;
+    await runtime.close();
+    runtime = await createRuntime({ persistPath, authFixture, inspectStorage: true });
+    const retired = await json(runtime, '/api/account/export');
+    assert.equal(retired.deleted, true);
+    assert.equal(retired.workspace_id, beforeA.workspace_id);
+    assert.equal(retired.account_revision, beforeA.account_revision);
+    assert.deepEqual(retired.data, beforeA.data);
+    assert.deepEqual((await json(runtime, '/api/receipts/delete-student-a')).receipt, deletion);
+    const replay = await json(runtime, '/api/account', { method: 'DELETE', body: packet('delete-student-a', { confirm: 'DELETE_MY_WORKSPACE' }, deletion.account_revision - 1) });
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.receipt, deletion);
+    await json(runtime, '/api/receipts/material-save-a', {}, 410);
+    await json(runtime, '/api/onboarding', {}, 410);
+    await json(runtime, '/api/materials', { method: 'PUT', body: packet('restart-must-not-resurrect', material('a')) }, 410);
+    const currentB = await json(runtime, '/api/account/export', { student: 'b' });
+    assert.equal(currentB.account_revision, beforeB.account_revision);
+    assert.deepEqual(currentB.data, beforeB.data);
+    await json(runtime, '/api/receipts/delete-student-a', { student: 'b' }, 404);
+    const storage = await runtime.mf.unsafeGetDurableObjectStorage(runtime.workerName, 'StudentState', { name: `student-v1:${identities.a.tenantId}` });
+    assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM records'))[0].n, 0);
+    assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM operations'))[0].n, 1);
+    assert.equal((await storage.exec('SELECT deleted FROM workspace_meta'))[0].deleted, 1);
+  });
+
   await t.test('all intercepted Worker egress was the pinned synthetic JWKS endpoint', async () => {
     assert.ok(runtime.outboundRequests.length > 0);
     assert.ok(runtime.outboundRequests.every((request) => request.method === 'GET' && request.url === `${runtime.authFixture.config.issuer}/cdn-cgi/access/certs`));

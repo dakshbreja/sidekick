@@ -2,6 +2,14 @@
 
 Status date: October 14, 2026.
 
+## Bounded cloud pilot-smoke pass — October 14, 2026
+
+From exact local checkpoint `ae95090526d276885233a5ec828587c89e18781e`, separate continuation `codex/cloud-pilot-smoke-20261014` reviews retention/deletion and restart recovery using synthetic fixtures only. No reproducible material implementation failure was found in this bounded pass; this is not a comprehensive security review. Production behavior is unchanged.
+
+`npm run test:pilot` reuses eight existing suites and passed **79 checks**. One added actual workerd/SQLite check confirms deleted A stays retired after full runtime restart: unchanged deletion identity/revision/receipt, exact deletion retry, no old reads/receipts/new writes or recreated content; B's content and revision remain unchanged. Existing suites cover private provider rows, collected sources, delegated grants, tutor late replies and browser receipt recovery. Their provider/AI responses are intercepted, not live calls. The one final `npm run check` passed **359 checks**, built-in privacy scan (122 files, no findings), plugin audit, dry-run build and executable deployment bundle. No private denylist was supplied. This smoke performs no rendered-browser test; the unchanged CI separately runs the rendered suite.
+
+[PILOT-CHECKLIST.md](PILOT-CHECKLIST.md) provides the command, evidence map, retained-receipt/tombstone/browser/OAuth-KV/backup boundaries and open external release gates. Passing it does not authorize student admission or certify disaster recovery, physical erasure, live eLC consent or sustained free-tier capacity. Completed local Google/Claude setup is preserved. No deployment, access expansion, paid inference, real school collection or personal data was accessed by this cloud pass. Bring-back instructions are in LOCAL-CLOUD-HANDOFF.md.
+
 ## Live teaching safeguards and cloud checkpoint — October 14, 2026
 
 A bounded live Claude regression on fictional course material passed. Claude distinguished an explanation absent from the source from a learner error, saved a separate test-only evaluation as `source_limited` with covered criteria `supported_response`, retained `hints`, and kept mastery false. The actual save result, operation receipt, exact-session readback and website display agreed. When asked to relabel the same assisted response as independent without a new attempt, it refused and made no new save. A fresh chat given only course/session identity resumed revision 1 with the same source limitation, hints and next step; the server source check was current. It did not teach the unsupported explanation or save again. Temporary course-specific access was visibly revoked afterward. Real coursework and personal Bridge records were not touched. Raw transcripts and screenshots stay outside Git.
