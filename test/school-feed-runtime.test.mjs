@@ -1,0 +1,35 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import {createRuntime} from './runtime-fixture.mjs';
+const URL='https://uga.view.usg.edu/d2l/le/calendar/feed/user/feed.ics?token=synthetic_runtime_only';
+const ics=`BEGIN:VCALENDAR\r\nVERSION:2.0\r\nBEGIN:VEVENT\r\nUID:synthetic-runtime-item\r\nDTSTART:${new Date(Date.now()-86400000).toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'')}\r\nSUMMARY:Synthetic runtime exercise due\r\nEND:VEVENT\r\nEND:VCALENDAR`;
+async function waitFor(fn){for(let n=0;n<100;n++){if(await fn())return;await new Promise(r=>setTimeout(r,100));}throw new Error('Synthetic collection timed out');}
+test('actual Worker persists feed alarm, isolates tenants, resumes collected work and erases access',async t=>{
+ const directory=await mkdtemp(join(tmpdir(),'community-feed-test-'));let runtime,calls=0;
+ const options={persistPath:directory,bindings:{SCHOOL_FEEDS_ENABLED:'true',GOOGLE_CREDENTIAL_KEY:'A'.repeat(43)},providerFetch:async request=>{assert.equal(request.url,URL);calls++;return new Response(ics,{headers:{'content-type':'text/calendar'}});}};
+ runtime=await createRuntime(options);const auth=runtime.authFixture;t.after(async()=>{await runtime.close();await rm(directory,{recursive:true,force:true});});
+ const owner=(await(await runtime.request('/api/onboarding')).json()).workspace_id,headers={'X-Workspace-Id':owner};
+ assert.equal((await runtime.request('/api/courses',{method:'PUT',body:{operation_id:'synthetic_course',expected_revision:0,id:'course_a',code:'SYN 101',title:'Synthetic course',term_id:'synthetic-term',section:'A'}})).status,200);
+ const packet={id:'feed_a',course_id:'course_a',kind:'calendar',feed_url:URL,consent:true,expected_revision:0,operation_id:'synthetic_feed_save'};
+ assert.equal((await runtime.request('/api/school-feeds',{method:'PUT',body:packet})).status,403);
+ assert.equal((await runtime.request('/api/school-feeds',{student:'b',method:'PUT',headers,body:packet})).status,403);
+ assert.equal((await runtime.request('/api/school-feeds',{method:'PUT',headers,body:packet})).status,200);
+ assert.equal((await(await runtime.request('/api/school-feeds',{method:'PUT',headers,body:packet})).json()).replayed,true);
+ await runtime.close();runtime=await createRuntime({...options,authFixture:auth});
+ await waitFor(async()=>(await(await runtime.request('/api/daily')).json()).counts.overdue===1);assert.equal(calls,1);
+ let daily=await(await runtime.request('/api/daily')).json();const item=daily.groups.overdue[0];assert.equal(daily.sources[0].status,'connected');
+ assert.equal((await(await runtime.request('/api/daily',{student:'b'})).json()).counts.overdue,0);
+ assert.equal((await runtime.request('/api/receipts/synthetic_feed_save',{student:'b'})).status,404);
+ const progress={operation_id:'synthetic_progress',expected_revision:0,id:'daily_'+item.id,assignment_id:item.id,course_id:'course_a',title:item.title,status:'done',submitted:true,verification:'reported'};
+ assert.equal((await runtime.request('/api/progress',{method:'PUT',headers,body:progress})).status,200);
+ await runtime.close();runtime=await createRuntime({...options,authFixture:auth});daily=await(await runtime.request('/api/daily')).json();assert.equal(daily.counts.overdue,0);assert.equal(daily.counts.completed,1);
+ const output=await(await runtime.request('/api/account/export')).text();assert.doesNotMatch(output,/synthetic_runtime_only|ciphertext|envelope|feed_url/);
+ assert.equal((await runtime.request('/api/school-feeds',{method:'DELETE',headers,body:{id:'feed_a',expected_revision:1,operation_id:'synthetic_remove'}})).status,200);
+ assert.equal((await(await runtime.request('/api/daily')).json()).sources.length,0);
+ const exported=await(await runtime.request('/api/account/export')).json();assert.equal((await runtime.request('/api/account',{method:'DELETE',headers,body:{operation_id:'synthetic_delete',expected_revision:exported.account_revision,confirm:'DELETE_MY_WORKSPACE'}})).status,200);
+ assert.deepEqual((await(await runtime.request('/api/account/export')).json()).data.school_feeds,[]);
+});
+test('disabled deployment never accepts a feed or makes an external feed request',async t=>{const r=await createRuntime();t.after(r.close);const owner=(await(await r.request('/api/onboarding')).json()).workspace_id;assert.equal((await r.request('/api/school-feeds',{method:'PUT',headers:{'X-Workspace-Id':owner},body:{}})).status,409);assert.equal(r.outboundRequests.filter(r=>r.url.startsWith('https://uga.')).length,0);});

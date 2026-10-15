@@ -1,8 +1,8 @@
-# Private sign-in: the next step
+# Private sign-in: owner test
 
 Copyright 2026 Daksh Breja. All rights reserved.
 
-This is a preparation guide. The app has passed synthetic tests, but real sign-in, hosting and school connections have not been configured. The current demo uses fake students and disposable information.
+The owner approved a separate private test deployment on October 12. Its built-in HTTPS address is enabled behind an exact owner-email allow rule covering all Worker traffic. Real browser admission, independent backend identity validation, synthetic profile/course/material saves, receipt confirmation and reload/readback have passed. School connections remain unconfigured. Local demos use fake students and disposable information.
 
 ## What we are building
 
@@ -26,12 +26,12 @@ No account password, identity token or secret should be pasted into chat, an iss
 
 ## First: decisions we need
 
-- [x] The owner reports being signed in to the Cloudflare dashboard. This execution environment still has no Cloudflare account connection or provider secret.
-- [ ] Choose the community Worker's built-in HTTPS address for the private test, or a dedicated custom hostname later. The owner reports no owned domain; buying one is not required for this test path. The actual address and routing are not yet established.
+- [x] The local official CLI and dashboard confirmed the intended account. A new community-only secret is installed; the separate cloud coding environment remains without provider secrets.
+- [x] Enable only the dedicated community Worker built-in HTTPS address after exact-owner access protection; no custom domain purchase needed.
 - [ ] Name the project operator and who can administer hosting, identity and stored data.
-- [ ] Choose a narrow list of operator-controlled test accounts. Use made-up course information during testing.
-- [ ] Decide how long a sign-in session should last and how quickly removing access must take effect.
-- [ ] Decide where the new workspace-addressing secret will be backed up securely and who can recover it.
+- [x] Initial allowlist contains only the approved owner email. A second controlled account requires a separately reviewed addition; use synthetic course information.
+- [ ] The test application session is 24 hours. Actual expiry and revocation timing still need hosted verification.
+- [x] A new secret is stored in Cloudflare with an owner-readable local recovery copy outside Git. A recovery drill remains pending.
 
 These choices prepare the next scoped setup. This guide does not grant access, create a hostname, change a provider account or authorize real-student admission.
 
@@ -51,9 +51,9 @@ Cloudflare documents Access protection for a single Worker's production and prev
 
 The reviewed sequence is: prepare the new community Worker with URL routing disabled, apply a dedicated Worker-level Access policy covering **All traffic**, restrict it to the agreed operator-controlled testers, supply the new community settings securely, then enable only the protected test address and verify signed-out/unauthorized requests. Keep preview routes disabled unless separately included and tested. Do not use an account-wide policy or change any personal Worker's settings. New Worker-level Access identity behavior must still be checked against this project's signed-assertion verifier in the actual hosted tests.
 
-This sequence is a plan, not completed provider setup. The repository's `workers_dev: false` and `preview_urls: false` are still in place. Creating the Worker, configuring the policy and enabling its route require the intended Cloudflare setup/credentials and a concrete reviewed change. Do not create a publicly reachable placeholder as a workaround.
+This sequence was applied after explicit owner approval. The repository defaults remain `workers_dev: false` and `preview_urls: false`. A separate protected local owner-test configuration enables only the approved address and supplies the new issuer/audience. Never deploy the default blank configuration over a working hosted test; it deliberately disables routing and fails authentication closed.
 
-For the owner now: open Cloudflare's **Zero Trust** area and check whether a team is already set up. If it shows a setup/onboarding screen, note that state without sharing credentials; the next guided step will depend on it. A Zero Trust team must exist before using Worker Access. Do not change a team issuer already used by a personal deployment.
+The existing Zero Trust team was used without changing its issuer or other applications. Only the separate community Access application was configured.
 
 ## What we must prove before a real student pilot
 
@@ -91,3 +91,17 @@ The cloud environment currently has no provider secrets or outbound provider ide
 Run `npm run check` for synthetic identity, storage and privacy contracts, and `npm run test:browser` for rendered synthetic behavior. Neither command configures or proves real Access admission, enrollment or provider revocation. See [STATUS.md](STATUS.md) for completed evidence.
 
 `npm run check:signin` is a format-only preflight for an execution environment that intentionally supplies the three settings. It reports missing setting names, never their values, and makes no network requests. An empty foundation is expected to fail this check. Hosting-only Worker secrets are not automatically readable by this CLI; do not copy a secret into chat or CI to make it pass. Even a successful result leaves identity, hostname, Access policy and revocation verification explicitly false until actual hosted checks are performed.
+
+## Approved owner hosting, October 12
+
+The community Worker was first uploaded unrouted. After explicit approval, its dedicated Access application was created and restricted to the exact owner email before enabling the test address. Readback confirmed All traffic protection and one owner-only Allow policy. Preview URLs remain disabled. No personal service, credential, collector or school source was changed.
+
+A new 256-bit workspace-addressing secret is stored in Cloudflare; its local recovery file is mode 0600 inside a mode 0700 directory outside the repository. Issuer/audience and routing live in a separate mode-0600 owner-test configuration. They are not copied into CI or the cloud coding environment. The owner controls hosting and recovery.
+
+The live check uncovered two gaps absent from the original synthetic fixtures: deployment-introduced browser helper code and an Access assertion missing the optional JOSE `typ` header. The first is repaired and now guarded by an actual Wrangler artifact check and rendered CI. The second is repaired while retaining RS256 signature, pinned issuer/audience, expiry, required application payload type and human identity checks. Owner login, synthetic profile/course/material saves, receipt confirmation and reload/readback passed on the live host. Opt-in category-only diagnostics were disabled after the check. A second real account, unauthorized-account login, revocation/expiry, restore and deletion drills remain unverified. See [STATUS.md](STATUS.md).
+
+## Approved two-account test, October 12
+
+The owner subsequently approved a second address they control and email-code sign-in. The exact-email policy now admits only those two addresses. Email-code login verifies mailbox possession; it does not grant mailbox access or prove university enrollment. The operator completed the second sign-in, which started with an empty workspace. Separate synthetic profiles, courses and materials persisted through reload, exact material readback and downloaded exports; exported workspace identities differed. No original school content or source connection was imported.
+
+This supersedes the second-account limitation in the earlier owner-only checkpoint. It does not complete the entire hosted acceptance table: calendars/receipt attacks, identity switches during writes, revocation, deletion, response-loss recovery and restore remain to be tested live. The site remains a private operator-controlled test, not student admission.

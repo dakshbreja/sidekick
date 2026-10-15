@@ -9,12 +9,32 @@ before(async () => { fixture = await createAuthFixture(); });
 const verify = (token, config = fixture.config) => verifyIdentity(token, config, fixture.keyResolver);
 const rejectsIdentity = (operation) => assert.rejects(operation, { code: 'invalid_identity', status: 401, message: 'invalid_identity' });
 
+test('Access assertions may omit the optional JOSE type without changing ownership', async () => {
+  assert.deepEqual(await verify(await fixture.signToken({}, {typ:undefined})), await verify(fixture.tokens.a));
+});
+
+test('absent JOSE type still requires the signature and complete pinned human app claims', async () => {
+  for (const claims of [{aud:'another-app'}, {iss:'https://other.cloudflareaccess.com'}, {type:'org'}, {type:undefined}, {sub:''}, {email:undefined}, {service_token_status:true}, {exp:1}]) {
+    await rejectsIdentity(() => fixture.signToken(claims, {typ:undefined}).then(verify));
+  }
+  const other = await generateKeyPair('RS256');
+  await rejectsIdentity(() => fixture.signToken({}, {typ:undefined}, other.privateKey).then(verify));
+});
+
+test('opt-in identity diagnostics expose validation categories only', async t => {
+  const warning = t.mock.method(console, 'warn', () => {});
+  const token = await fixture.signToken({aud:'another-app'});
+  await rejectsIdentity(() => verify(token, {...fixture.config,diagnostics:true}));
+  assert.deepEqual(warning.mock.calls.map(call => JSON.parse(call.arguments[0])), [{event:'authentication_rejected',phase:'signature_and_registered_claims',reason:'ERR_JWT_CLAIM_VALIDATION_FAILED',claim:'aud'}]);
+});
+
 test('signed users receive distinct frozen server-derived tenant identities', async () => {
   const a = await verify(fixture.tokens.a);
   const b = await verify(fixture.tokens.b);
   assert.ok(Object.isFrozen(a));
-  assert.deepEqual(Object.keys(a).sort(), ['issuer', 'subject', 'tenantId']);
+  assert.deepEqual(Object.keys(a).sort(), ['email', 'issuer', 'subject', 'tenantId']);
   assert.equal(a.subject, 'synthetic-student-a');
+  assert.equal(a.email, 'student-a@example.invalid');
   assert.match(a.tenantId, /^[A-Za-z0-9_-]{43}$/);
   assert.notEqual(a.tenantId, b.tenantId);
   assert.deepEqual(await verify(fixture.tokens.a), a);
@@ -26,6 +46,7 @@ test('tenant identity follows signed subject, not changed email, tenant claims o
     email: 'renamed@example.invalid', tenantId: 'other-user', user_id: 'other-user', owner: 'other-user',
   }));
   assert.equal(changed.tenantId, a.tenantId);
+  assert.equal(changed.email, 'renamed@example.invalid');
   const newKey = { ...fixture.config, tenantIdKey: base64url.encode(crypto.getRandomValues(new Uint8Array(32))) };
   assert.notEqual((await verify(fixture.tokens.a, newKey)).tenantId, a.tenantId);
 });

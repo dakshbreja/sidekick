@@ -1,0 +1,13 @@
+{
+  "$schema":"./node_modules/wrangler/config-schema.json",
+  "name":"school-bridge-community-connector",
+  "main":"src/connector-worker.js",
+  "compatibility_date":"2026-10-13",
+  "compatibility_flags":["nodejs_compat","global_fetch_strictly_public"],
+  "workers_dev":false,
+  "preview_urls":false,
+  "observability":{"enabled":false},
+  "durable_objects":{"bindings":[{"name":"CONNECTOR_REQUESTS","class_name":"ConnectorRequests"}]},
+  "migrations":[{"tag":"v1","new_sqlite_classes":["ConnectorRequests"]}],
+  "vars":{"CONNECTOR_ORIGIN":"https://connector.example.invalid","BRIDGE_ORIGIN":"https://community.example.invalid"}
+}

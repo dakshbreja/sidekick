@@ -30,6 +30,7 @@ test('actual workerd and SQLite isolate independent signed student workspaces', 
     for (const student of ['a', 'b']) {
       const result = await json(runtime, '/api/onboarding', { student });
       assert.equal(result.workspace_id, identities[student].tenantId);
+      assert.equal(result.login_email, `student-${student}@example.invalid`);
       assert.equal(result.profile, null);
       assert.equal(result.profile_revision, 0);
       assert.deepEqual(result.courses, []);
@@ -240,6 +241,41 @@ test('actual workerd and SQLite isolate independent signed student workspaces', 
     await json(runtime, '/api/calendar/import', { method: 'POST', body: { ...body, tenantId: identities.b.tenantId } }, 400);
   });
 
+  await t.test('academic preferences and imported transcripts remain private, revisable, and recoverable', async () => {
+    const beforeA = await json(runtime, '/api/onboarding');
+    const beforeB = await json(runtime, '/api/account/export', {student:'b'});
+    const profile = {display_name:'Synthetic a',timezone:'America/New_York',consent_version:'local-demo-v1',
+      institution:'Example University',school_email:'student@school.example.invalid',study_goals:'Practice synthetic logistics.',learning_preferences:'Short questions, then a worked example.'};
+    const body=packet('academic-profile-a',profile,beforeA.profile_revision);
+    const saved=await json(runtime,'/api/onboarding',{method:'PUT',body});
+    const retry=await json(runtime,'/api/onboarding',{method:'PUT',body});
+    assert.equal(retry.replayed,true);assert.deepEqual(retry.receipt,saved.receipt);
+    const fresh=await json(runtime,'/api/onboarding',{headers:{'Cf-Access-Authenticated-User-Email':'forged@example.invalid'}});
+    assert.equal(fresh.profile.institution,profile.institution);
+    assert.equal(fresh.profile.school_email,profile.school_email);
+    assert.equal(fresh.login_email,'student-a@example.invalid');
+    for(const field of ['school_email_verified','student_id','login_email','owner']) {
+      await json(runtime,'/api/onboarding',{method:'PUT',body:packet('profile-reject-'+field,{...profile,[field]:'forged'},saved.revision)},400);
+    }
+    await json(runtime,'/api/onboarding',{method:'PUT',body:packet('profile-invalid-email',{...profile,school_email:'not an email'},saved.revision)},400);
+    const imported={...material('a'),id:'imported-transcript',source_kind:'text_import',material_kind:'transcript',source_label:'Synthetic recorder export',text:'WEBVTT\n\n00:00.000 --> 00:02.000\nSynthetic lecture text.'};
+    const write=packet('imported-transcript-a',imported);
+    const result=await json(runtime,'/api/materials',{method:'PUT',body:write});
+    assert.equal((await json(runtime,'/api/materials/imported-transcript')).record.text,imported.text);
+    assert.deepEqual((await json(runtime,'/api/materials',{method:'PUT',body:write})).receipt,result.receipt);
+    await json(runtime,'/api/materials/imported-transcript',{student:'b'},404);
+    assert.deepEqual((await json(runtime,'/api/account/export',{student:'b'})).data,beforeB.data);
+    const cleared=await json(runtime,'/api/onboarding',{method:'PUT',body:packet('profile-clear-preferences',{...profile,school_email:'',study_goals:'',learning_preferences:''},saved.revision)});
+    assert.equal(cleared.record.study_goals,'');
+    const exported=await json(runtime,'/api/account/export');
+    assert.equal(exported.data.profile.learning_preferences,'');
+    assert.equal(exported.data.materials.find(m=>m.id===imported.id).source_label,imported.source_label);
+    // Old request fingerprints still replay after the additive contract upgrade.
+    const old=await json(runtime,'/api/onboarding',{method:'PUT',body:packet('profile-save-01',{display_name:'Synthetic a',timezone:'America/New_York',consent_version:'local-demo-v1'})});
+    assert.equal(old.replayed,true);assert.equal(old.revision,1);
+    assert.equal((await json(runtime,'/api/onboarding')).profile_revision,cleared.revision);
+  });
+
   await t.test('permanent DO owner binding rejects incorrectly routed internal calls', async () => {
     const namespace = await runtime.mf.getDurableObjectNamespace('STUDENTS');
     const stub = namespace.getByName(`student-v1:${identities.a.tenantId}`);
@@ -280,6 +316,35 @@ test('actual workerd and SQLite isolate independent signed student workspaces', 
     assert.deepEqual((await json(runtime, '/api/receipts/delete-student-a')).receipt, deleted.receipt);
     await json(runtime, '/api/materials', { method: 'PUT', body: packet('after-delete-new', material('a')) }, 410);
     assert.deepEqual((await json(runtime, '/api/account/export', { student: 'b' })).data, bBefore);
+    const storage = await runtime.mf.unsafeGetDurableObjectStorage(runtime.workerName, 'StudentState', { name: `student-v1:${identities.a.tenantId}` });
+    assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM records'))[0].n, 0);
+    assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM operations'))[0].n, 1);
+    assert.equal((await storage.exec('SELECT deleted FROM workspace_meta'))[0].deleted, 1);
+  });
+
+  await t.test('deletion tombstone and exact recovery survive restart without resurrecting either content or old receipts', async () => {
+    const beforeA = await json(runtime, '/api/account/export');
+    const beforeB = await json(runtime, '/api/account/export', { student: 'b' });
+    const deletion = (await json(runtime, '/api/receipts/delete-student-a')).receipt;
+    const authFixture = runtime.authFixture;
+    await runtime.close();
+    runtime = await createRuntime({ persistPath, authFixture, inspectStorage: true });
+    const retired = await json(runtime, '/api/account/export');
+    assert.equal(retired.deleted, true);
+    assert.equal(retired.workspace_id, beforeA.workspace_id);
+    assert.equal(retired.account_revision, beforeA.account_revision);
+    assert.deepEqual(retired.data, beforeA.data);
+    assert.deepEqual((await json(runtime, '/api/receipts/delete-student-a')).receipt, deletion);
+    const replay = await json(runtime, '/api/account', { method: 'DELETE', body: packet('delete-student-a', { confirm: 'DELETE_MY_WORKSPACE' }, deletion.account_revision - 1) });
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.receipt, deletion);
+    await json(runtime, '/api/receipts/material-save-a', {}, 410);
+    await json(runtime, '/api/onboarding', {}, 410);
+    await json(runtime, '/api/materials', { method: 'PUT', body: packet('restart-must-not-resurrect', material('a')) }, 410);
+    const currentB = await json(runtime, '/api/account/export', { student: 'b' });
+    assert.equal(currentB.account_revision, beforeB.account_revision);
+    assert.deepEqual(currentB.data, beforeB.data);
+    await json(runtime, '/api/receipts/delete-student-a', { student: 'b' }, 404);
     const storage = await runtime.mf.unsafeGetDurableObjectStorage(runtime.workerName, 'StudentState', { name: `student-v1:${identities.a.tenantId}` });
     assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM records'))[0].n, 0);
     assert.equal((await storage.exec('SELECT COUNT(*) AS n FROM operations'))[0].n, 1);

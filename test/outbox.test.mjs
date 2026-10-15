@@ -91,3 +91,40 @@ test('malformed local routes are rejected before any recovery request',async()=>
   assert.throws(()=>f.queue(),/invalid/);
  }
 });
+
+async function selectionFixture() {
+ const f=fixture();const p={operation_id:'synthetic-selection',expected_revision:0,id:'google_a',connection_generation:1,calendar_ids:['calendar_b','calendar_a']};
+ const i={owner,path:'/api/google/selection',method:'POST',data:{id:p.id,connection_generation:1,calendar_ids:p.calendar_ids}};
+ const canonical=value=>Array.isArray(value)?'['+value.map(canonical).join(',')+']':value&&typeof value==='object'?'{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+canonical(value[key])).join(',')+'}':JSON.stringify(value);
+ const raw=canonical({op:'google_selection.put',data:{...i.data,calendar_ids:[...p.calendar_ids].sort()},expectedRevision:0});
+ const hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(raw))),b=>b.toString(16).padStart(2,'0')).join('');
+ const r={operation_id:p.operation_id,operation:'google_selection.put',resource_id:p.id,expected_revision:0,request_hash:hash,outcome:'rejected',reason:'google_access_changed'};
+ return {...f,p,i,r};
+}
+test('lost selection replay resolves only after its exact terminal rejection receipt is read',async()=>{
+ const f=await selectionFixture();await assert.rejects(f.queue().run('selection',f.i,async()=>f.p,lost,lost));
+ const calls=[];let reads=0;
+ const result=await f.queue().reconcile(async(route,p)=>{calls.push('send');assert.deepEqual(p,f.p);throw Object.assign(new Error('Changed'),{status:409,code:'google_access_changed'});},async()=>{calls.push('read');if(++reads===1)throw missing();return {ok:true,receipt:f.r};});
+ assert.deepEqual(calls,['read','send','read']);assert.deepEqual(result,{deleted:false,rejected:1});assert.equal(f.values.size,0);
+});
+test('lost rejection reply survives browser restart and cleans up without replaying',async()=>{
+ const f=await selectionFixture();await assert.rejects(f.queue().run('selection',f.i,async()=>f.p,lost,lost));
+ const result=await f.queue().reconcile(()=>assert.fail('Do not resend terminal operation'),async()=>({ok:true,receipt:f.r}));
+ assert.equal(result.rejected,1);assert.equal(f.values.size,0);
+});
+test('mismatched, acknowledged, missing or unavailable rejection evidence stays pending',async()=>{
+ const f=await selectionFixture();await assert.rejects(f.queue().run('selection',f.i,async()=>f.p,lost,lost));
+ for(const changed of [{request_hash:'wrong'},{resource_id:'other'},{operation:'courses.put'},{expected_revision:1},{revision:1},{reason:'unknown'},{deleted:true}]){
+  await assert.rejects(f.queue().reconcile(()=>assert.fail('No resend'),async()=>({ok:true,receipt:{...f.r,...changed}})),/unconfirmed/);assert.equal(f.queue().count(),1);
+ }
+ let reads=0;await assert.rejects(f.queue().reconcile(async()=>{throw Object.assign(new Error('Changed'),{status:409,code:'google_access_changed'});},async()=>{reads++;throw missing();}));assert.equal(reads,2);assert.equal(f.queue().count(),1);
+ const g=await selectionFixture();const ack={...g.r,outcome:undefined,revision:1};
+ await assert.rejects(g.queue().run('selection',g.i,async()=>g.p,async()=>({ok:true,receipt:ack}),lost));
+ await assert.rejects(g.queue().reconcile(()=>assert.fail('No resend'),async()=>({ok:true,receipt:g.r})),/unconfirmed/);assert.equal(g.queue().count(),1);
+});
+test('failed cleanup of terminal selection keeps original recovery data and permits later receipt-only recovery',async()=>{
+ const f=await selectionFixture();const q=f.queue();await assert.rejects(q.run('selection',f.i,async()=>f.p,lost,lost));
+ const remove=f.storage.removeItem;f.storage.removeItem=()=>{throw new Error('Cleanup unavailable');};
+ await assert.rejects(q.reconcile(()=>assert.fail('No resend'),async()=>({ok:true,receipt:f.r})),/Cleanup/);assert.equal(q.count(),1);
+ f.storage.removeItem=remove;assert.equal((await f.queue().reconcile(()=>assert.fail('No resend'),async()=>({ok:true,receipt:f.r}))).rejected,1);assert.equal(f.values.size,0);
+});

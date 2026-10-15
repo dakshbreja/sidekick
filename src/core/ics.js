@@ -182,7 +182,7 @@ const DAY_INDEX = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
  * rule parts are not approximated: the base remains visible with a coverage warning.
  * COUNT counts the series before EXDATE; old, unbounded series jump to the window.
  */
-function expandRecurrence(base, rrule, windowStart, windowEnd, tz = DEFAULT_TZ) {
+function expandRecurrence(base, rrule, windowStart, windowEnd, tz = DEFAULT_TZ, budget = null) {
   const freq = (rrule.FREQ || '').toUpperCase();
   if (!['DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'].includes(freq)) {
     return { occurrences: [base.start], unsupported: ['SECONDLY', 'MINUTELY', 'HOURLY'].includes(freq) ? freq : 'FREQUENCY' };
@@ -239,6 +239,7 @@ function expandRecurrence(base, rrule, windowStart, windowEnd, tz = DEFAULT_TZ) 
   let walked = 0;
   for (let dayOffset = count ? 0 : firstOffset; dayOffset <= lastOffset; dayOffset++) {
     if (count !== null && emitted >= count) break;
+    if (budget && --budget.remaining < 0) return { occurrences, unsupported: 'EXPANSION_LIMIT' };
     if (++walked > 36600) return { occurrences, unsupported: 'EXPANSION_LIMIT' };
     const civil = new Date(origin.getTime() + dayOffset * DAY_MS);
     const year = civil.getUTCFullYear(), month = civil.getUTCMonth() + 1, day = civil.getUTCDate();
@@ -439,4 +440,4 @@ export function parseICS(text, { windowStart, windowEnd, source = 'unknown', def
   return out;
 }
 
-export const _internals = { unfold, parseLine, parseDateProp, parseRRule, expandRecurrence, wallTimeToInstant, tzOffsetMs, unescapeText };
+export const _internals = { unfold, parseLine, parseDateProp, parseRRule, expandRecurrence, wallTimeToInstant, tzOffsetMs, unescapeText, wallParts };

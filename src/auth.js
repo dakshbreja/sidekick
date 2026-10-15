@@ -120,22 +120,28 @@ export async function verifyIdentity(token, config, keyResolver) {
   if (token.length > MAX_TOKEN_BYTES || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) {
     throw invalidIdentity();
   }
+  let phase = 'header';
   try {
     const header = decodeProtectedHeader(token);
-    if (header.alg !== 'RS256' || header.typ !== 'JWT' || typeof header.kid !== 'string' ||
+    // The JOSE typ header is optional (RFC 7519 §5.1). Live Worker Access
+    // assertions can omit it. Payload type=app, signature and pinned claims
+    // remain mandatory; an explicitly different header type is rejected.
+    if (header.alg !== 'RS256' || (header.typ !== undefined && header.typ !== 'JWT') || typeof header.kid !== 'string' ||
         header.kid.length < 1 || header.kid.length > 256 ||
         /[\s\u0000-\u001f\u007f]/.test(header.kid) ||
         ['jku', 'jwk', 'x5u'].some((key) => Object.hasOwn(header, key))) {
       throw invalidIdentity();
     }
+    phase = 'signature_and_registered_claims';
     const { payload } = await jwtVerify(token, keyResolver ?? publicKeysFor(config.issuer), {
       algorithms: ['RS256'],
       issuer: config.issuer,
       audience: config.audience,
-      typ: 'JWT',
+      ...(header.typ === undefined ? {} : { typ: 'JWT' }),
       clockTolerance: CLOCK_TOLERANCE_SECONDS,
       requiredClaims: ['iss', 'aud', 'sub', 'exp', 'iat', 'type'],
     });
+    phase = 'human_identity';
     // Access application service tokens have an empty sub/common_name. Require
     // a signed end-user subject and email, while never using email as ownership.
     if (payload.type !== 'app' || typeof payload.sub !== 'string' ||
@@ -153,8 +159,14 @@ export async function verifyIdentity(token, config, keyResolver) {
       { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
     const digest = await crypto.subtle.sign('HMAC', hmacKey,
       encoder.encode(JSON.stringify(['school-bridge-student-v1', config.issuer, payload.sub])));
-    return Object.freeze({ tenantId: base64url.encode(new Uint8Array(digest)), subject: payload.sub, issuer: config.issuer });
+    return Object.freeze({ tenantId: base64url.encode(new Uint8Array(digest)), subject: payload.sub, issuer: config.issuer, email: payload.email });
   } catch (error) {
+    if (config.diagnostics === true) {
+      const reasons = ['ERR_JWT_CLAIM_VALIDATION_FAILED', 'ERR_JWT_EXPIRED', 'ERR_JWS_SIGNATURE_VERIFICATION_FAILED', 'ERR_JWKS_NO_MATCHING_KEY', 'ERR_JWKS_TIMEOUT', 'ERR_JWKS_INVALID', 'ERR_JWK_INVALID'];
+      console.warn(JSON.stringify({event:'authentication_rejected', phase,
+        reason:reasons.includes(error?.code) ? error.code : 'validation_failed',
+        claim:['iss','aud','sub','exp','iat','type'].includes(error?.claim) ? error.claim : undefined}));
+    }
     if (error instanceof AuthenticationError) throw error;
     if (['ERR_JWKS_TIMEOUT', 'ERR_JWKS_INVALID', 'ERR_JWK_INVALID'].includes(error?.code)) throw unavailable();
     throw invalidIdentity();
@@ -168,5 +180,6 @@ export async function authenticate(request, env) {
     issuer: env?.ACCESS_ISSUER,
     audience: env?.ACCESS_AUDIENCE,
     tenantIdKey: env?.TENANT_ID_KEY,
+    diagnostics: env?.AUTH_DIAGNOSTICS === 'true',
   });
 }

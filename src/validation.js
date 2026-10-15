@@ -50,7 +50,7 @@ function siteUrl(value) {
       url.hostname === 'localhost' || !url.hostname.includes('.') || url.port) fail('unsafe_site_url');
   return url.href;
 }
-export const WRITES = new Set(['profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'account.delete']);
+export const WRITES = new Set(['study.put', 'assignments.put', 'profile.put', 'courses.put', 'materials.put', 'progress.put', 'learning.put', 'connections.put', 'calendar.put', 'google_selection.put', 'account.delete']);
 // Used by both the pre-parse replay lookup and the final calendar save. No
 // time-dependent parsing belongs here: exact original bytes establish identity.
 export function validateCalendarFingerprint(data) {
@@ -61,9 +61,56 @@ export function validateCalendarFingerprint(data) {
 }
 export function validateWrite(op, data) {
   switch (op) {
+    case 'study.put': {
+      object(data,['course_id','session_id','topic','question','response','assistance','test_only','next_step','sources','criteria']);
+      if(typeof data.test_only!=='boolean')fail('test_scope_required');
+      const response=string(data.response,4000,{empty:true,multiline:true});
+      if(!Array.isArray(data.sources)||!data.sources.length||data.sources.length>3)fail('invalid_study_sources');
+      const sources=data.sources.map(ref=>{
+        object(ref,['material_id','revision','start','end']);
+        const source={material_id:id(ref.material_id),revision:revision(ref.revision),start:revision(ref.start),end:revision(ref.end)};
+        if(source.revision<1||source.end<=source.start||source.end-source.start>2000)fail('invalid_source_range');
+        return source;
+      });
+      if(new Set(sources.map(r=>`${r.material_id}:${r.start}:${r.end}`)).size!==sources.length)fail('duplicate_source');
+      if(!Array.isArray(data.criteria)||data.criteria.length>6)fail('invalid_study_criteria');
+      const criteria=data.criteria.map(c=>{
+        object(c,['criterion','verdict','evidence_quote','reason']);
+        const value={criterion:string(c.criterion,300),verdict:enumeration(c.verdict,['met','partial','not_met','not_evidenced','source_not_covered']),evidence_quote:string(c.evidence_quote,1000,{empty:true,multiline:true}),reason:string(c.reason,600,{multiline:true})};
+        if(value.evidence_quote&&!response.includes(value.evidence_quote))fail('response_evidence_mismatch');
+        if(!['not_evidenced','source_not_covered'].includes(value.verdict)&&!value.evidence_quote.trim())fail('response_evidence_required');
+        return value;
+      });
+      if(new Set(criteria.map(c=>c.criterion.trim().toLowerCase())).size!==criteria.length)fail('duplicate_criterion');
+      const value={course_id:courseId(data.course_id),session_id:id(data.session_id),topic:string(data.topic,200),question:string(data.question,1200,{multiline:true}),response,assistance:enumeration(data.assistance,['independent','hints','worked_example']),test_only:data.test_only,next_step:string(data.next_step,2000,{multiline:true}),sources,criteria};
+      return {kind:'study_sessions',id:`${value.course_id}:${value.session_id}`,value};
+    }
+    case 'assignments.put': {
+      object(data,['id','course_id','title','due_at','all_day','work_kind']);
+      if(typeof data.all_day!=='boolean')fail('invalid_event');
+      if(typeof data.id==='string'&&data.id.startsWith('school_'))fail('reserved_assignment_id');
+      const value={id:id(data.id),course_id:courseId(data.course_id),title:string(data.title,200),due_at:timestamp(data.due_at),all_day:data.all_day};
+      if(data.work_kind!==undefined)value.work_kind=enumeration(data.work_kind,['assignment','project','exam']);
+      return {kind:'assignments',id:value.id,value};
+    }
     case 'profile.put': {
-      object(data, ['display_name', 'timezone', 'consent_version']);
-      return { kind: 'profile', id: 'profile', value: { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) } };
+      object(data, ['display_name', 'timezone', 'consent_version', 'institution', 'school_email', 'study_goals', 'learning_preferences', 'preferred_name', 'study_session_minutes', 'exam_prep_days', 'exam_target_percent']);
+      const value = { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) };
+      // Preserve the original fingerprint for queued v1 saves: absent additions
+      // stay absent. These self-reported fields never grant school access.
+      if (data.institution !== undefined) value.institution = string(data.institution, 200, { empty: true });
+      if (data.school_email !== undefined) {
+        value.school_email = string(data.school_email, 320, { empty: true });
+        if (value.school_email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.school_email)) fail('invalid_school_email');
+      }
+      for (const field of ['study_goals', 'learning_preferences']) {
+        if (data[field] !== undefined) value[field] = string(data[field], 2000, { empty: true, multiline: true });
+      }
+      if(data.preferred_name!==undefined)value.preferred_name=string(data.preferred_name,80,{empty:true});
+      for(const [field,min,max] of [['study_session_minutes',10,90],['exam_prep_days',1,30],['exam_target_percent',1,100]]){
+        if(data[field]!==undefined){if(data[field]!==null&&(!Number.isSafeInteger(data[field])||data[field]<min||data[field]>max))fail('invalid_study_preference');value[field]=data[field];}
+      }
+      return { kind: 'profile', id: 'profile', value };
     }
     case 'courses.put': {
       object(data, ['id', 'code', 'title', 'section', 'term_id']);
@@ -71,8 +118,16 @@ export function validateWrite(op, data) {
       return { kind: 'courses', id: value.id, value };
     }
     case 'materials.put': {
-      object(data, ['id', 'course_id', 'title', 'text', 'source_kind']);
-      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 100000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual']) };
+      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label', 'archived', 'import_source']);
+      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 300000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual', 'text_import']) };
+      if(data.import_source!==undefined){
+        object(data.import_source,['key','content_sha256','extracted_at','source_checked_at']);
+        const source=data.import_source;if(data.source_kind!=='text_import'||typeof source.content_sha256!=='string'||!(/^[a-f0-9]{64}$/).test(source.content_sha256))fail('invalid_material_source');
+        value.import_source={key:id(source.key),content_sha256:source.content_sha256,extracted_at:timestamp(source.extracted_at),source_checked_at:source.source_checked_at===null?null:timestamp(source.source_checked_at)};
+      }
+      if (data.archived !== undefined) { if (typeof data.archived !== 'boolean') fail('invalid_archived'); value.archived=data.archived; }
+      if (data.material_kind !== undefined) value.material_kind = enumeration(data.material_kind, ['course_text', 'notes', 'transcript']);
+      if (data.source_label !== undefined) value.source_label = string(data.source_label, 200, { empty: true });
       return { kind: 'materials', id: value.id, value };
     }
     case 'progress.put': {
@@ -104,6 +159,19 @@ export function validateWrite(op, data) {
       object(data, ['id', 'provider', 'site_url']);
       const value = { id: id(data.id), provider: enumeration(data.provider, ['elc', 'google_calendar', 'google_drive', 'manual', 'other']), site_url: siteUrl(data.site_url) };
       return { kind: 'connections', id: value.id, value };
+    }
+    case 'google_selection.put': {
+      object(data, ['id', 'connection_generation', 'calendar_ids']);
+      const generation = revision(data.connection_generation);
+      if (generation < 1 || !Array.isArray(data.calendar_ids) || data.calendar_ids.length > 20) fail('invalid_calendar_selection');
+      const calendar_ids = data.calendar_ids.map(value => {
+        string(value, 1024);
+        if (/[\u0000-\u0020\u007f]/.test(value) || ['.', '..'].includes(value)) fail('invalid_calendar_selection');
+        return value;
+      });
+      if (new Set(calendar_ids).size !== calendar_ids.length) fail('duplicate_calendar_selection');
+      const value = { id: id(data.id), connection_generation: generation, calendar_ids: calendar_ids.sort() };
+      return { kind: 'google_selection', id: value.id, value };
     }
     case 'calendar.put': {
       object(data, ['id', 'course_id', 'source_id', 'events', 'coverage']);
@@ -142,18 +210,24 @@ export function validateWrite(op, data) {
 }
 export function validateRead(op, data) {
   const fields = {
-    'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
+    'study.get':['course_id','session_id','scope'], 'study.material':['course_id','material_id','revision','start'], 'study.deadlines':['course_id','limit','cursor'], 'study.receipt':['operation_id'],
+    'daily.get': [], 'assignments.list':['course_id','limit','cursor'], 'profile.get': [], 'courses.list': ['term_id', 'limit', 'cursor'],
     'materials.list': ['course_id', 'limit', 'cursor'], 'materials.get': ['id'],
     'progress.list': ['course_id', 'status', 'limit', 'cursor'],
     'learning.get': ['course_id', 'session_id'],
     'connections.list': ['provider', 'limit', 'cursor'],
     'calendar.list': ['course_id', 'source_id', 'limit', 'cursor'],
+    'google_selection.get': ['id'],
     'receipt.get': ['operation_id'], 'account.export': [],
   }[op];
   if (!fields) fail('unknown_operation', 404);
   object(data, fields);
-  for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id']) if (data[key] !== undefined) id(data[key]);
-  if (op === 'materials.get' && data.id === undefined) fail('invalid_id');
+  for (const key of ['id', 'course_id', 'session_id', 'term_id', 'source_id','material_id']) if (data[key] !== undefined) id(data[key]);
+  if(['study.get','study.material','study.deadlines'].includes(op)&&data.course_id===undefined)fail('invalid_id');
+  if(op==='study.get'&&data.scope!==undefined)enumeration(data.scope,['learning','test']);
+  if(op==='study.material'){id(data.material_id);revision(data.revision);if(data.revision<1)fail('invalid_revision');if(data.start!==undefined)revision(data.start);}
+  if(op==='study.receipt')operationId(data.operation_id);
+  if (['materials.get', 'google_selection.get'].includes(op) && data.id === undefined) fail('invalid_id');
   if (op === 'learning.get' && data.course_id === undefined) fail('invalid_id');
   if (op === 'receipt.get') operationId(data.operation_id);
   if (data.status !== undefined) enumeration(data.status, ['not_started', 'in_progress', 'blocked', 'done']);
