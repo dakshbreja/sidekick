@@ -2,7 +2,7 @@
 import {XMLParser, XMLValidator} from 'fast-xml-parser';
 import {parseICS} from './core/ics.js';
 import {fail, string} from './validation.js';
-export const FEED_LIMITS={bytes:250000,events:500,announcements:200,feeds:20,interval:900000};
+export const FEED_LIMITS={bytes:250000,events:500,announcements:200,feeds:20,interval:1800000};
 export const schoolFeedsEnabled=env=>env.SCHOOL_FEEDS_ENABLED==='true' && Boolean(env.COLLECTION_BUDGETS) && /^[A-Za-z0-9_-]{43}$/.test(env.GOOGLE_CREDENTIAL_KEY||'');
 export function feedURL(value,kind){
   string(value,4096);let url;try{url=new URL(value);}catch{fail('invalid_school_feed');}

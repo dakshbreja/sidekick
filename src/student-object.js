@@ -1,3 +1,4 @@
+import {populateDemo} from './demo-workspace.js';
 import {TutorState,runTutor,tutorConfigured} from './tutor.js';
 import {SchoolFeedState} from './school-feed-state.js';
 import {schoolFeedsEnabled} from './school-feed.js';
@@ -35,6 +36,7 @@ export class StudentState extends DurableObject {
     const existing=await this.ctx.storage.getAlarm();
     if(replace || existing===null || next<existing)await this.ctx.storage.setAlarm(next);
   }
+  async populateDemo(owner) { return this.ctx.blockConcurrencyWhile(()=>populateDemo(this.store,owner)); }
   async dispatch(message) {
     if(!['google_selection.put','account.delete'].includes(message?.op))return this.store.dispatch(message);
     return this.store.dispatch(message,{commit:callback=>this.ctx.storage.transaction(async()=>{

@@ -1,3 +1,4 @@
+import {demoOwner} from './demo-workspace.js';
 import {tutorConfigured} from './tutor.js';
 import {studyProtocol} from './study-connector.js';
 import {APP_PATHS} from './workspace-pages.js';
@@ -34,10 +35,11 @@ const staticResponse=(body,type)=>new Response(body,{headers:{'Content-Type':typ
 
 export default {
   async fetch(request,env) {
-    const url=new URL(request.url),path=url.pathname;
+    const url=new URL(request.url),demoAPI=url.pathname.startsWith('/api/demo/'),path=demoAPI?url.pathname.replace('/api/demo/','/api/'):url.pathname;
     try {
       if(env.CONNECTOR_ENABLED==='true'&&request.method==='GET'&&path==='/ai-access')return staticResponse(CONNECTOR_PAGE,'text/html; charset=utf-8');
       if(env.CONNECTOR_ENABLED==='true'&&request.method==='GET'&&path==='/connector-client.js')return staticResponse(CONNECTOR_SCRIPT,'text/javascript; charset=utf-8');
+      if(request.method==='GET' && (path==='/demo'||path.startsWith('/demo/')&&APP_PATHS.includes(path.slice(5)))) return staticResponse(PAGE.replace('<body>','<body data-demo="true"><aside class="demo-banner">JOHN’S FICTIONAL DEMO · All changes stay in this separate demo workspace. <a href="/dashboard" data-demo-exit>Exit demo</a></aside>'),'text/html; charset=utf-8');
       if(request.method==='GET' && APP_PATHS.includes(path)) return staticResponse(PAGE,'text/html; charset=utf-8');
       if(request.method==='GET' && path==='/client.js') return staticResponse(CLIENT_SCRIPT,'text/javascript; charset=utf-8');
       if(request.method==='GET' && path==='/write-intent.js') return staticResponse(WRITE_MODULE,'text/javascript; charset=utf-8');
@@ -45,7 +47,7 @@ export default {
       if(request.method==='GET' && path==='/style.css') return staticResponse(STYLE,'text/css; charset=utf-8');
       if(request.method==='GET' && path==='/health') return json({ok:true,service:'school-bridge-community',scope:'http_only'});
       if(!path.startsWith('/api/')) return json({ok:false,error:'not_found'},404);
-      const identity=await authenticate(request,env);
+      const verified=await authenticate(request,env),identity=demoAPI?{...verified,tenantId:demoOwner(verified.tenantId),email:'john@example.invalid'}:verified;
       if(!env.STUDENTS) throw new HttpError('storage_unavailable',503);
       const student=env.STUDENTS.getByName('student-v1:'+identity.tenantId);
       const dispatch=async(op,data={},packet={})=>student.dispatch({tenantId:identity.tenantId,op,data,...packet});
@@ -55,6 +57,11 @@ export default {
       if(expectedWorkspace && expectedWorkspace!==identity.tenantId) throw new HttpError('workspace_changed',403);
       if(request.method!=='GET') {
         mutationOrigin(request);queryData(url,[]);
+      }
+      if(demoAPI){
+        // Fixed per-owner sandbox. It cannot authorize, collect or delegate real sources.
+        if(path==='/api/start'&&request.method==='POST'){object(await readJSON(request),[]);return respond(await student.populateDemo(identity.tenantId));}
+        if(path.startsWith('/api/google/')||path.startsWith('/api/ai-access')||path==='/api/school-feeds'||path==='/api/study-connector-preview'||path==='/api/connections'&&request.method!=='GET')throw new HttpError('demo_external_connections_disabled',403);
       }
       if(path.startsWith('/api/ai-access')){
         if(env.CONNECTOR_ENABLED!=='true'||!env.CONNECTOR_AUTH)throw new HttpError('connector_not_configured',503);
@@ -99,7 +106,7 @@ export default {
         const results=await Promise.all([dispatch('profile.get'),dispatch('courses.list'),dispatch('connections.list')]);
         const error=results.find(r=>!r.ok);if(error)return respond(error);
         return json({ok:true,workspace_id:identity.tenantId,login_email:identity.email,profile:results[0].record,profile_revision:results[0].revision,courses:results[1].records,
-          connections:results[2].records,capabilities:{...capabilities,ai_teaching:tutorConfigured(env),study_connector:env.CONNECTOR_ENABLED==='true'&&Boolean(env.CONNECTOR_AUTH),daily_dashboard:true,school_feeds:schoolFeedsEnabled(env),google_calendar_oauth:googleConfigured(env),google_calendar_selection:googleConfigured(env),google_calendar_collection:collectionEnabled(env),background_collection:collectionEnabled(env)||schoolFeedsEnabled(env)}});
+          connections:results[2].records,capabilities:{...capabilities,ai_teaching:tutorConfigured(env),study_connector:!demoAPI&&env.CONNECTOR_ENABLED==='true'&&Boolean(env.CONNECTOR_AUTH),daily_dashboard:true,school_feeds:!demoAPI&&schoolFeedsEnabled(env),google_calendar_oauth:!demoAPI&&googleConfigured(env),google_calendar_selection:!demoAPI&&googleConfigured(env),google_calendar_collection:!demoAPI&&collectionEnabled(env),background_collection:!demoAPI&&(collectionEnabled(env)||schoolFeedsEnabled(env))}});
       }
       if(path==='/api/onboarding' && request.method==='PUT') {
         const packet=writePacket(await readJSON(request));return respond(await dispatch('profile.put',packet.data,packet));

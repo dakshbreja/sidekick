@@ -59,3 +59,8 @@ test('daily deadlines respect profile timezone, separate calendar events and dec
  const f=await setup(t);await f.dispatch('profile.put',{display_name:'Synthetic',timezone:'America/New_York',consent_version:'test'});
  await f.dispatch('assignments.put',{id:'deadline_a',course_id:'course_a',title:'Synthetic task',due_at:'2026-10-14T02:00:00Z',all_day:false});const daily=await f.dispatch('daily.get');assert.equal(daily.counts.due_today,1);assert.equal(daily.today,'2026-10-13');assert.equal(daily.display_complete,true);
 });
+
+test('successful feeds use a half-hour cadence within the six-course free collection budget',async t=>{
+ const f=await setup(t);await f.state.put(OWNER,f.packet,f.commit);await f.state.collect(OWNER,'feed_a',{fetcher:async()=>new Response(ics())});assert.equal(f.state.get('feed_a').next_due-f.now(),30*60000);
+ const daily=await f.dispatch('daily.get');assert.equal(daily.sources[0].check_interval_minutes,30);
+});

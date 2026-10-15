@@ -3,7 +3,7 @@ export const PERSONAL_HTML=`<section id="personal-day" data-page-section="dashbo
 export const PERSONAL_STYLE=`.personal-day{margin-bottom:28px}.personal-intro{font-size:20px;max-width:760px}.personal-grid{display:grid;grid-template-columns:1.55fr 1fr;gap:24px}.personal-focus{background:#193c38;color:#fff;border-radius:18px;padding:30px}.personal-focus .eyebrow,.personal-focus small{color:#bfdbcd}.personal-focus h2{font-size:30px;margin:12px 0}.personal-focus p{font-size:15px}.personal-focus button{background:#edf4c9;color:#193c38;border:0}.personal-focus a{color:#edf4c9}.personal-side{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px}.personal-side h3{margin-top:0}.personal-source{padding:16px 0;font-size:13px;color:var(--muted)}.personal-label{display:inline-block;border-radius:20px;padding:4px 10px;font-size:12px;background:#e8eed8;margin-bottom:14px}.personal-demo-label{background:#fff1bf;padding:15px 20px;border-radius:10px;margin-bottom:20px;font-size:13px}.personal-handoff{margin-top:20px;background:white;padding:22px;border:1px solid var(--line);border-radius:12px}.personal-handoff textarea{min-height:240px;font-size:13px}.personal-proof{border-left:3px solid #94aa80;padding-left:14px;font-size:13px;margin:20px 0}.personal-actions{display:flex;gap:15px;align-items:center;flex-wrap:wrap}.personal-quiet{font-size:13px;color:var(--muted)}@media(max-width:720px){.personal-grid{grid-template-columns:1fr}.personal-focus{padding:24px}.personal-focus h2{font-size:26px}}`;
 export function createPersonalUI({workspace}){
   const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
-  const link=(text,href)=>{const a=el('a',text);a.href=href;return a;};
+  const link=(text,href)=>{const a=el('a',text);a.href=document.body.dataset.demo==='true'&&href.startsWith('/')?'/demo'+href:href;return a;};
   function render(target,data,demo=false){
     target.replaceChildren();if(!data)return;
     if(demo)target.append(el('p','FICTIONAL PREVIEW · John Doe · Sample Wednesday, October 14 · No live checks, permissions or saves.','personal-demo-label'));
@@ -23,6 +23,7 @@ export function createPersonalUI({workspace}){
       if(!demo)actions.append(link('Open my tutor','/tutor?course='+encodeURIComponent(item.course_id)));
       focus.append(actions);
       button.addEventListener('click',()=>{
+        if(document.body.dataset.demo==='true'){location.assign('/demo/tutor?course='+encodeURIComponent(item.course_id));return;}
         let box=target.querySelector('.personal-handoff');if(box)box.remove();box=el('section',undefined,'personal-handoff');
         box.append(el('h3',demo?'John’s next session · fictional preview':'Your session, ready to review'),el('p','This includes your chosen goals and preferences. Nothing is sent automatically. Copy into your connected ChatGPT or Claude chat; the assistant must check current access and materials.'));
         const parts=[demo?'FICTIONAL DEMO ONLY. Do not read or write any real Bridge records.':'Use my approved School Bridge / Sidekick connection. Work only in my current authorized workspace.',
@@ -43,7 +44,7 @@ export function createPersonalUI({workspace}){
     if(data.focus.length>1){side.append(el('h3','Also on your radar'));for(const other of data.focus.slice(1)){side.append(el('p',other.title+' · '+other.due_label),el('p',other.progress==='in_progress'?'You reported starting this; submission is still pending.':other.reason,'personal-quiet'));}}
     if(!demo)side.append(link('Adjust my preferences','/onboarding/profile'));
     target.append(el('p',(demo?'Example status: ':'')+data.source_summary,'personal-source'),el('p',data.boundary,'personal-quiet'));
-    if(!demo){const nav=el('p',undefined,'personal-actions');nav.append(link('Review connections','/onboarding/connections'),link('See John’s fictional demo','/demo'));target.append(nav);}
+    if(!demo&&document.body.dataset.demo!=='true'){const nav=el('p',undefined,'personal-actions');nav.append(link('Review connections','/onboarding/connections'),link('See John’s fictional demo','/demo'));target.append(nav);}
   }
   return {render(data){render(document.querySelector('#personal-day'),data);},demo(data){render(document.querySelector('#personal-demo'),data,true);},clear(){document.querySelector('#personal-day').replaceChildren();document.querySelector('#personal-demo').replaceChildren();}};
 }

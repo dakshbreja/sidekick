@@ -7,7 +7,7 @@ export function feedRows(store){return store.sql.exec('SELECT body FROM school_f
 export function feedSchedules(store){return store.sql.exec("SELECT id,json_extract(body,'$.status') AS status,json_extract(body,'$.next_due') AS next_due,json_type(body,'$.envelope')='object' AS has_access FROM school_feeds").toArray();}
 export function publicFeed(row,now=Date.now()){
   const {envelope,snapshot,...safe}=row;
-  return {...safe,freshness:!row.last_successful_sync?'never_checked':now-Date.parse(row.last_successful_sync)>1800000?'stale':'recent',coverage:snapshot?.coverage||null,event_count:snapshot?.events?.length||0,announcement_count:snapshot?.announcements?.length||0};
+  return {...safe,check_interval_minutes:FEED_LIMITS.interval/60000,freshness:!row.last_successful_sync?'never_checked':row.error||now-Date.parse(row.last_successful_sync)>FEED_LIMITS.interval*2?'stale':'recent',coverage:snapshot?.coverage||null,event_count:snapshot?.events?.length||0,announcement_count:snapshot?.announcements?.length||0};
 }
 export class SchoolFeedState{
   constructor(store,{key,clock=()=>Date.now()}={}){this.store=store;this.key=key;this.clock=clock;}

@@ -8,14 +8,14 @@ export const EXTRA_PAGES=`<section id="learning-page" data-page-section="learnin
 ${TUTOR_PAGE}
 <section id="onboarding-demo" data-page-section="demo" class="card" hidden><p class="eyebrow">SAMPLE WALKTHROUGH · NOTHING IS SAVED</p><h2 id="demo-title">1 · Your profile</h2><p id="demo-description"></p><div id="demo-example" class="demo-example"></div><div class="page-actions"><button id="demo-back" class="secondary">Previous</button><button id="demo-next">Next step</button><a href="/onboarding/profile">Set up my own workspace</a></div><p class="hint">All examples are fictional. This walkthrough never requests access, writes profile data or connects a source.</p></section>`;
 export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
-  const $=s=>document.querySelector(s);
+  const $=s=>document.querySelector(s),demoMode=document.body.dataset.demo==='true',currentPath=()=>demoMode?(location.pathname.slice(5)||'/dashboard'):location.pathname,routePath=p=>demoMode?'/demo'+p:p;
   const routes={
     '/demo':{page:'personal-demo',title:'Welcome back, John!',description:'A fictional day with Sidekick. See how your goals, deadlines and saved progress shape a personal plan.'},
     '/dashboard':{page:'dashboard',title:'Your school day.',description:'Deadlines, instructor updates and a clear place to begin.'},
     '/notes':{page:'notes',title:'Your course library.',description:'Keep notes, course text and transcript exports together.'},
     '/learning':{page:'learning',title:'Learning that builds on you.',description:'Your study preferences and explicitly saved learning progress.'},
     '/tutor':{page:'tutor',title:'Your tutor, in one place.',description:'Learn from selected course materials and resume your saved session.'},
-    '/calendar':{page:'calendar',title:'See what’s coming.',description:'Your selected Google calendars and imported events.'},
+    '/calendar':{page:'calendar',title:'See what’s coming.',description:demoMode?'John’s fictional classes, study time and club plans.':'Your school feeds, selected Google calendars and imported events.'},
     '/onboarding/profile':{page:'profile',title:'Make this workspace yours.',description:'Start with your profile. School details and study preferences are optional.'},
     '/onboarding/courses':{page:'courses',title:'Add your classes.',description:'Keep each course, section and term separate from the start.'},
     '/onboarding/connections':{page:'connections',title:'Choose what to connect.',description:'Connect only the sources you want. Each connection asks for its own permission.'},
@@ -24,33 +24,35 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
   };
   const legacy={'#today':'/calendar','#daily':'/dashboard','#setup':'/onboarding/profile','#sources':'/onboarding/connections','#materials':'/notes','#tools':'/settings','#privacy':'/settings'};
   if(new URL(location.href).searchParams.has('calendar'))history.replaceState(null,'','/onboarding/connections');
-  let active='',defaultEntry=location.pathname==='/'&&!legacy[location.hash],learningGeneration=0,owner=null;
+  let active='',defaultEntry=currentPath()==='/'&&!legacy[location.hash],learningGeneration=0,owner=null;
   function renderRoute({focus=false}={}){
-    let path=legacy[location.hash]||location.pathname;
+    let path=legacy[location.hash]||currentPath();
     if(path==='/'||path==='/onboarding')path=path==='/onboarding'?'/onboarding/profile':'/dashboard';
     if(!routes[path])path='/dashboard';
-    if(location.pathname!==path||legacy[location.hash])history.replaceState(null,'',path);
+    if(location.pathname!==routePath(path)||legacy[location.hash])history.replaceState(null,'',routePath(path));
+    if(demoMode)for(const a of document.querySelectorAll('a[href^="/"]')){if(!a.hasAttribute('data-demo-exit')&&!a.pathname.startsWith('/demo'))a.href='/demo'+a.getAttribute('href');}
     const route=routes[path];active=path;
     for(const element of document.querySelectorAll('[data-page-section]'))element.hidden=!element.dataset.pageSection.split(' ').includes(route.page);
     $('#onboarding-nav').hidden=!['profile','courses','connections'].includes(route.page);
     $('#dashboard-start').hidden=route.page!=='dashboard'||!workspace()||Boolean(workspace().profile)||workspace().deleted;
     $('#page-title').textContent=route.page==='dashboard'&&workspace()?.profile?'Welcome back, '+(workspace().profile.preferred_name||workspace().profile.display_name)+'!':route.title;$('#page-description').textContent=route.description;document.title=route.title.replace(/\.$/,'')+' · Sidekick';
-    for(const link of document.querySelectorAll('nav a')){if(new URL(link.href).pathname===path)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
+    for(const link of document.querySelectorAll('nav a')){if(new URL(link.href).pathname===routePath(path))link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
     if(focus){$('#page-title').focus({preventScroll:true});window.scrollTo(0,0);}
   }
-  function navigate(path){if(!routes[path])return;defaultEntry=false;if(location.pathname!==path)history.pushState(null,'',path);renderRoute({focus:true});}
+  function navigate(path){if(!routes[path])return;defaultEntry=false;if(location.pathname!==routePath(path))history.pushState(null,'',routePath(path));renderRoute({focus:true});}
   document.addEventListener('click',event=>{
     if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
-    const link=event.target.closest('a[href]');if(!link||link.target||link.hasAttribute('download'))return;
+    const link=event.target.closest('a[href]');if(!link||link.target||link.hasAttribute('download')||link.hasAttribute('data-demo-exit'))return;
     const target=new URL(link.href);if(target.origin!==location.origin||target.search)return;
-    const path=legacy[target.hash]||target.pathname;
+    if(!demoMode&&target.pathname.startsWith('/demo'))return;
+    const path=legacy[target.hash]||(demoMode?target.pathname.replace(/^\/demo/,''):target.pathname);
     if(!routes[path])return;event.preventDefault();navigate(path);
   });
   window.addEventListener('popstate',()=>{defaultEntry=false;renderRoute({focus:true});});
   window.addEventListener('hashchange',()=>{defaultEntry=false;renderRoute({focus:true});});
   function update(data,materials){
     if(owner!==data.workspace_id||data.deleted){owner=data.workspace_id;++learningGeneration;$('#learning-handoff').replaceChildren();}
-    if(defaultEntry){defaultEntry=false;history.replaceState(null,'',data.profile?'/dashboard':'/onboarding/profile');}
+    if(defaultEntry){defaultEntry=false;history.replaceState(null,'',routePath(data.profile?'/dashboard':'/onboarding/profile'));}
     $('#setup-progress').textContent=(data.profile?'Profile saved':'Profile not saved')+' · '+data.courses.length+' course(s) added · Connections are optional and checked separately.';
     $('#learning-preferences').replaceChildren();row($('#learning-preferences'),'Study goals',data.profile?.study_goals||'No goals saved yet.');row($('#learning-preferences'),'How you like to learn',data.profile?.learning_preferences||'No preferences saved yet.');
 
