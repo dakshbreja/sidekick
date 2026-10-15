@@ -2,6 +2,18 @@
 
 Status date: October 14, 2026.
 
+## Approved real course materials and Mac relay — October 14, 2026
+
+The owner explicitly approved a six-course local relay and its final website grant. The separate private community deployment now accepts only selected-course, content-hash-checked material writes through a revocable credential; the personal Bridge remains read-only. Initial publication saved 167 verified extracted files across six courses; per-course identities and counts remain in the private operating log. Two extractions remain pending and were not published. The collector's current listing and raw/text hashes were checked before upload; this is not a new full eLC download or a claim that all original sources are current.
+
+A dedicated hourly Mac launch agent uses a reviewed external copy of the standard-library publisher. A scheduled second run completed successfully with all 167 unchanged, zero saves and no conflicts. Configuration, recovery state, exact source/target identifiers and logs are protected outside Git. An additional source-term guard passed the current 167-file dry run and the fictional semester-change rejection test. Laptop sleep delays new collection/publication; hosted calendar/announcement feeds remain independent. No new paid service or AI inference was used for this import.
+
+Hosted readback confirmed all 167 records at revision 1 in the intended owner scope. Notes displayed all 170 existing-plus-imported materials across pagination and filtered the 13 files of the selected course correctly. Reading the current Topic 8 source returned its corporate strategy/diversification text; Tutor listed the same files and produced a source-backed selected-material handoff. This checks retrieval, not a new live model lesson or understanding assessment. No real learning/progress save was made. John's separate demo retained exactly four fictional materials; other-owner restrictions passed the real Worker/SQLite suite.
+
+The full check passed 389 Node checks plus four Python checks, privacy/plugin audits, build and executable bundle. The later manual-edit metadata guard passed the focused real Worker/SQLite and Python checks; the added term guard passed all five Python checks. Final build/bundle and external private-reference scan passed. Tests cover hash mismatch, forbidden operations, owner/course/demo separation, receipts/exact retries, interrupted upload recovery, pagination over 100 records, manual edit protection and revocation. Selected-course receipts do not expose records from a previously broader grant.
+
+See [MATERIAL-RELAY.md](MATERIAL-RELAY.md) for consent, operation, bounded storage, recovery and extraction limitations. The grant expires after 180 days and can be revoked under Connections. Real assistant grants were not expanded. Original PDFs/slides may contain diagrams, equations or missing glyphs that text extraction cannot faithfully reproduce. No public launch or multi-student capacity claim is made.
+
 ## Live eLC feeds and isolated whole-site John demo — October 14, 2026
 
 With explicit owner approval, six course calendars and six announcement RSS feeds were connected to the first operator's private community workspace. All twelve passed live read/parsing and hosted successful-collection checks: 68 calendar entries and nine recent announcement entries at onboarding. Private feed addresses are encrypted in the existing credential envelope and remain outside Git. The personal Bridge was read-only; no personal collector, schedule, progress or credential was modified. Real eLC dates now appear on Calendar as well as the daily dashboard. These feeds are partial: they do not collect course documents, grades or submission receipts, and no completion was inferred.

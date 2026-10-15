@@ -21,7 +21,7 @@ export {StudentState} from './student-object.js';
 const routes = Object.freeze({
   '/api/assignments':{get:'assignments.list',put:'assignments.put',query:['course_id']},
   '/api/courses': {get:'courses.list',put:'courses.put',query:['term_id']},
-  '/api/materials': {get:'materials.list',put:'materials.put',query:['course_id']},
+  '/api/materials': {get:'materials.list',put:'materials.put',query:['course_id','cursor']},
   '/api/progress': {get:'progress.list',put:'progress.put',query:['course_id','status']},
   '/api/learning': {get:'learning.get',put:'learning.put',query:['course_id','session_id']},
   '/api/connections': {get:'connections.list',put:'connections.put',query:['provider']},
@@ -61,7 +61,16 @@ export default {
       if(demoAPI){
         // Fixed per-owner sandbox. It cannot authorize, collect or delegate real sources.
         if(path==='/api/start'&&request.method==='POST'){object(await readJSON(request),[]);return respond(await student.populateDemo(identity.tenantId));}
-        if(path.startsWith('/api/google/')||path.startsWith('/api/ai-access')||path==='/api/school-feeds'||path==='/api/study-connector-preview'||path==='/api/connections'&&request.method!=='GET')throw new HttpError('demo_external_connections_disabled',403);
+        if(path.startsWith('/api/material-relay')||path.startsWith('/api/google/')||path.startsWith('/api/ai-access')||path==='/api/school-feeds'||path==='/api/study-connector-preview'||path==='/api/connections'&&request.method!=='GET')throw new HttpError('demo_external_connections_disabled',403);
+      }
+      if(path==='/api/material-relay'){
+        if(env.CONNECTOR_ENABLED!=='true'||!env.CONNECTOR_AUTH)throw new HttpError('connector_not_configured',503);
+        if(expectedWorkspace!==identity.tenantId)throw new HttpError('workspace_changed',403);
+        if(!['GET','POST','DELETE'].includes(request.method))throw new HttpError('method_not_allowed',405);
+        const op=request.method==='GET'?'status':request.method==='POST'?'create':'revoke';
+        const endpoint=op==='create'?await env.CONNECTOR_AUTH.relayEndpoint():null;
+        const result=await student.materialRelay({owner:identity.tenantId,op,data:op==='status'?{}:await readJSON(request)});
+        if(result.ok&&op==='create')result.endpoint=endpoint;return respond(result);
       }
       if(path.startsWith('/api/ai-access')){
         if(env.CONNECTOR_ENABLED!=='true'||!env.CONNECTOR_AUTH)throw new HttpError('connector_not_configured',503);

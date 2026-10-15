@@ -1,3 +1,4 @@
+import {initializeRelay,digest} from './material-relay.js';
 import {initializeTutor,tutorExport,clearTutor,TutorState} from './tutor.js';
 import {readStudy,prepareStudy} from './study.js';
 import {initializeSchoolFeeds,feedRows,publicFeed} from './school-feed-state.js';
@@ -9,7 +10,7 @@ import { initializeGoogleCollection, clearGoogleCollection, reconcileGoogleSelec
 import { ContractError, WRITES, fail, object, operationId, revision, validateCalendarFingerprint, validateRead, validateWrite } from './validation.js';
 
 const KINDS = ['profile', 'courses', 'materials', 'progress', 'learning', 'connections', 'calendar', 'google_selection', 'assignments'];
-export const STORE_LIMITS = Object.freeze({ recordBytes: 128000, totalRecordBytes: 10000000, totalReceiptBytes: 20000000, receipts: 5000, recordsPerKind: 100, calendars: 20 });
+export const STORE_LIMITS = Object.freeze({ recordBytes: 128000, importedMaterialBytes: 350000, totalRecordBytes: 10000000, totalReceiptBytes: 20000000, receipts: 5000, recordsPerKind: 100, materials: 500, calendars: 20 });
 const bytes = (value) => new TextEncoder().encode(value).byteLength;
 const canonical = (value) => {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -59,6 +60,7 @@ export class StudentStore {
       initializeTutor(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (8)');
       initializeSchoolFeeds(this);
+      initializeRelay(this);
       this.sql.exec('INSERT OR IGNORE INTO schema_migrations (version) VALUES (7)');
     });
   }
@@ -90,6 +92,7 @@ export class StudentStore {
         operationId(message.operationId);
         revision(message.expectedRevision);
         validated = calendarReplay ? { value: validateCalendarFingerprint(data) } : validateWrite(message.op, data);
+        if(message.op==='materials.put'&&validated.value.import_source&&await digest(validated.value.text)!==validated.value.import_source.content_sha256)fail('material_hash_mismatch');
         let fingerprint = validated.value;
         if (message.fingerprintData !== undefined) {
           if (message.op !== 'calendar.put') fail('unexpected_fingerprint');
@@ -99,7 +102,7 @@ export class StudentStore {
           if (raw.id !== validated.value.id || raw.course_id !== validated.value.course_id || raw.source_id !== validated.value.source_id) fail('fingerprint_identity_mismatch');
           fingerprint = raw;
         }
-        if (!calendarReplay && bytes(JSON.stringify(validated.value)) > STORE_LIMITS.recordBytes) fail('record_too_large', 413);
+        if (!calendarReplay && bytes(JSON.stringify(validated.value)) > (message.op==='materials.put'&&validated.value.import_source?STORE_LIMITS.importedMaterialBytes:STORE_LIMITS.recordBytes)) fail('record_too_large', 413);
         const request = canonical({ op: calendarReplay ? 'calendar.put' : message.op, data: fingerprint, expectedRevision: message.expectedRevision });
         if (bytes(request) > 300000) fail('record_too_large', 413);
         requestHash = await sha256(request);
@@ -293,8 +296,8 @@ export class StudentStore {
     if (input.kind === 'google_selection') reconcileGoogleSelection(this, record);
     const body = JSON.stringify(record);
     const count = bytes(body);
-    if (count > STORE_LIMITS.recordBytes) fail('record_too_large', 413);
-    if (!old && this.row('SELECT COUNT(*) AS n FROM records WHERE kind = ?', input.kind).n >= (input.kind === 'calendar' ? STORE_LIMITS.calendars : STORE_LIMITS.recordsPerKind)) fail('record_limit_reached', 409);
+    if (count > (input.kind==='materials'&&input.value.import_source?STORE_LIMITS.importedMaterialBytes:STORE_LIMITS.recordBytes)) fail('record_too_large', 413);
+    if (!old && this.row('SELECT COUNT(*) AS n FROM records WHERE kind = ?', input.kind).n >= (input.kind === 'calendar' ? STORE_LIMITS.calendars : input.kind === 'materials' ? STORE_LIMITS.materials : STORE_LIMITS.recordsPerKind)) fail('record_limit_reached', 409);
     const total = this.row('SELECT COALESCE(SUM(byte_count), 0) AS n FROM records').n;
     const oldBytes = this.row('SELECT byte_count FROM records WHERE kind = ? AND id = ?', input.kind, input.id)?.byte_count ?? 0;
     if (total - oldBytes + count > STORE_LIMITS.totalRecordBytes) fail('workspace_storage_limit', 409);
@@ -322,6 +325,7 @@ export class StudentStore {
     this.sql.exec('DELETE FROM records');
     this.sql.exec('DELETE FROM operations');
     this.sql.exec('DELETE FROM connector_grants');
+    this.sql.exec('DELETE FROM material_relay');
     this.sql.exec('DELETE FROM google_connections');
     this.sql.exec('DELETE FROM google_choices');
     clearGoogleCollection(this);

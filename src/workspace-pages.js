@@ -33,6 +33,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
     if(demoMode)for(const a of document.querySelectorAll('a[href^="/"]')){if(!a.hasAttribute('data-demo-exit')&&!a.pathname.startsWith('/demo'))a.href='/demo'+a.getAttribute('href');}
     const route=routes[path];active=path;
     for(const element of document.querySelectorAll('[data-page-section]'))element.hidden=!element.dataset.pageSection.split(' ').includes(route.page);
+    if(demoMode||!workspace()?.capabilities?.study_connector)$('#material-relay').hidden=true;
     $('#onboarding-nav').hidden=!['profile','courses','connections'].includes(route.page);
     $('#dashboard-start').hidden=route.page!=='dashboard'||!workspace()||Boolean(workspace().profile)||workspace().deleted;
     $('#page-title').textContent=route.page==='dashboard'&&workspace()?.profile?'Welcome back, '+(workspace().profile.preferred_name||workspace().profile.display_name)+'!':route.title;$('#page-description').textContent=route.description;document.title=route.title.replace(/\.$/,'')+' · Sidekick';

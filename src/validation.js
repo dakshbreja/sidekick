@@ -118,8 +118,13 @@ export function validateWrite(op, data) {
       return { kind: 'courses', id: value.id, value };
     }
     case 'materials.put': {
-      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label', 'archived']);
-      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 100000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual', 'text_import']) };
+      object(data, ['id', 'course_id', 'title', 'text', 'source_kind', 'material_kind', 'source_label', 'archived', 'import_source']);
+      const value = { id: id(data.id), course_id: courseId(data.course_id), title: string(data.title, 200), text: string(data.text, 300000, { multiline: true }), source_kind: enumeration(data.source_kind, ['manual', 'text_import']) };
+      if(data.import_source!==undefined){
+        object(data.import_source,['key','content_sha256','extracted_at','source_checked_at']);
+        const source=data.import_source;if(data.source_kind!=='text_import'||typeof source.content_sha256!=='string'||!(/^[a-f0-9]{64}$/).test(source.content_sha256))fail('invalid_material_source');
+        value.import_source={key:id(source.key),content_sha256:source.content_sha256,extracted_at:timestamp(source.extracted_at),source_checked_at:source.source_checked_at===null?null:timestamp(source.source_checked_at)};
+      }
       if (data.archived !== undefined) { if (typeof data.archived !== 'boolean') fail('invalid_archived'); value.archived=data.archived; }
       if (data.material_kind !== undefined) value.material_kind = enumeration(data.material_kind, ['course_text', 'notes', 'transcript']);
       if (data.source_label !== undefined) value.source_label = string(data.source_label, 200, { empty: true });

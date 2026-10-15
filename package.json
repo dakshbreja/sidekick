@@ -10,7 +10,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --local --ip 127.0.0.1",
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test test/*.test.mjs && python3 test/material-relay-python.py",
     "test:recovery": "node --test test/recovery-runtime.test.mjs",
     "test:pilot": "node scripts/pilot-smoke.mjs",
     "test:runtime": "node --test test/runtime.test.mjs",

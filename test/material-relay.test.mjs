@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+import {createRuntime} from './runtime-fixture.mjs';
+const hash=s=>createHash('sha256').update(s).digest('hex');
+test('course publisher authenticates, scopes, retries, updates and revokes in real SQLite',async t=>{
+ const rt=await createRuntime({connector:true});t.after(()=>rt.close());const edge=await rt.mf.getWorker('study-connector-test');
+ const owners={};for(const student of ['a','b'])owners[student]=(await(await rt.request('/api/onboarding',{student})).json()).workspace_id;
+ const site=async(path,{student='a',status=200,...options}={})=>{const r=await rt.request(path,{student,...options,headers:{'X-Workspace-Id':owners[student],...options.headers}});const result=await r.json();assert.equal(r.status,status,JSON.stringify(result));return result;};
+ const write=(data,revision=0)=>({...data,operation_id:crypto.randomUUID(),expected_revision:revision});
+ for(const student of ['a','b'])for(const id of ['allowed','private'])await site('/api/courses',{student,method:'PUT',body:write({id,code:id.toUpperCase(),title:'Fictional course',term_id:'test',section:student})});
+ const grant=await site('/api/material-relay',{method:'POST',body:{course_ids:['allowed']}});assert.equal(grant.endpoint,'https://connector.example.invalid/material-relay');
+ const call=async(message,credential=grant.credential,status=200)=>{const r=await edge.fetch(grant.endpoint,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+credential},body:JSON.stringify(message)});const value=await r.json();assert.equal(r.status,status,JSON.stringify(value));return value;};
+ const packet=(key='example',course='allowed',text='Fictional safety stock reduces shortage risk.',rev=0)=>{const data={id:'relay_'+hash(JSON.stringify([course,key])),course_id:course,title:'Synthetic source',text,source_kind:'text_import',material_kind:'course_text',source_label:'Collected example',import_source:{key,content_sha256:hash(text),extracted_at:'2026-10-14T12:00:00.000Z',source_checked_at:null}};return {op:'put',data,operation_id:'relay_'+hash(JSON.stringify([data,rev])),expected_revision:rev};};
+ await call({op:'status'},'invalid',401);await call({op:'status'},owners.b+'.'+grant.credential.split('.')[1],401);
+ await call({op:'progress.put',data:{}},grant.credential,403);
+ await call(packet('foreign','private'),grant.credential,403);
+ const invalid=packet();invalid.data.import_source.content_sha256='0'.repeat(64);await call(invalid,grant.credential,400);
+ const p=packet();const saved=await call(p);assert.equal(saved.revision,1);assert.equal((await call(p)).replayed,true);
+ assert.deepEqual((await call({op:'receipt',data:{operation_id:p.operation_id}})).receipt,saved.receipt);
+ const status=await call({op:'status'});assert.equal(status.courses.length,1);assert.equal(status.records.length,1);assert.equal(status.records[0].text,undefined);assert.equal(status.relay.hash,undefined);
+ assert.equal((await site('/api/materials',{student:'b'})).records.length,0);
+ const demoOwner=(await(await rt.request('/api/demo/onboarding')).json()).workspace_id;
+ await site('/api/demo/material-relay',{method:'POST',body:{course_ids:['allowed']},headers:{'X-Workspace-Id':demoOwner},status:403});
+ const updated=packet('example','allowed','Updated fictional risk explanation.',1);assert.equal((await call(updated)).revision,2);
+ const read=await site('/api/materials/'+p.data.id);assert.equal(read.record.text,updated.data.text);assert.equal(read.record.revision,2);
+ const manual={...updated.data,text:'Student manual correction'};delete manual.import_source;
+ await site('/api/materials',{method:'PUT',body:write(manual,2)});
+ assert.equal((await call({op:'status'})).records.find(r=>r.id===p.data.id).import_source,undefined);
+ await call(packet('example','allowed','Should not overwrite manual edit',3),grant.credential,409);
+ assert.equal((await call(p)).replayed,true); // receipt recovery remains exact after a manual edit
+ assert.equal((await site('/api/materials/'+p.data.id)).record.text,'Student manual correction');
+ // More than the old 100-file boundary must remain traversable.
+ for(let n=0;n<101;n++)await call(packet('batch_'+n));
+ const page=await site('/api/materials');assert.equal(page.records.length,100);assert.equal(page.complete,false);
+ const tail=await site('/api/materials?cursor='+encodeURIComponent(page.next_cursor));assert.equal(tail.records.length,2);assert.equal(tail.complete,true);
+ const exported=await site('/api/account/export');assert.equal(exported.data.progress.length,0);assert.equal(exported.data.learning.length,0);assert.equal(JSON.stringify(exported).includes(grant.credential),false);
+ await site('/api/material-relay',{method:'DELETE',body:{}});await call({op:'status'},grant.credential,401);await call(packet('after-revoke'),grant.credential,401);
+ const next=await site('/api/material-relay',{method:'POST',body:{course_ids:['private']}});await call({op:'receipt',data:{operation_id:p.operation_id}},next.credential,403);
+ await call({op:'status'},grant.credential,401);
+});

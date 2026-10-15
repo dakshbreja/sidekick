@@ -73,6 +73,12 @@ export default class ConnectorWorker extends WorkerEntrypoint {
       const url=new URL(request.url);
       if(url.origin!==this.env.CONNECTOR_ORIGIN||!this.env.BRIDGE||!this.env.OAUTH_KV)return json({error:'connector_unavailable'},503);
       if(request.headers.get('Origin')&&request.headers.get('Origin')!==url.origin){console.warn('connector_origin_denied');return json({error:'origin_denied'},403);}
+      if(url.pathname==='/material-relay'){
+        if(request.method!=='POST'||url.search)return json({ok:false,error:'relay_request_invalid'},400);
+        const match=(request.headers.get('Authorization')||'').match(/^Bearer ([A-Za-z0-9_-]{43})\.([a-f0-9]{64})$/);
+        if(!match)return json({ok:false,error:'authentication_required'},401);
+        const body=await readJSON(request,350000);const result=await this.env.BRIDGE.materialRelay(match[1],match[2],body);return json(result,result.ok?200:result.status||400);
+      }
       if(url.pathname!=='/mcp'&&!url.pathname.startsWith('/.well-known/')&&!await pending(this.env).budget())return json({error:'try_again_later'},429);
       if(Number(request.headers.get('content-length'))>40000||url.href.length>16000)return json({error:'request_too_large'},413);
       // Bound protocol request bodies even when Content-Length is missing.
@@ -84,6 +90,7 @@ export default class ConnectorWorker extends WorkerEntrypoint {
       return await new OAuthProvider(options(this.env)).fetch(request,this.env,this.ctx);
     }catch(error){console.warn('connector_request_failed',error?.constructor?.name||'Error');return json({error:'connector_request_failed'},400);}
   }
+  relayEndpoint(){return this.env.CONNECTOR_ORIGIN+'/material-relay';}
   async describe(id){
     const item=await pending(this.env).read(id);
     if(!item)return {ok:false,error:'authorization_expired'};

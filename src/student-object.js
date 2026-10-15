@@ -1,3 +1,4 @@
+import {MaterialRelay} from './material-relay.js';
 import {populateDemo} from './demo-workspace.js';
 import {TutorState,runTutor,tutorConfigured} from './tutor.js';
 import {SchoolFeedState} from './school-feed-state.js';
@@ -35,6 +36,9 @@ export class StudentState extends DurableObject {
     if(next===null){await this.ctx.storage.deleteAlarm();return;}
     const existing=await this.ctx.storage.getAlarm();
     if(replace || existing===null || next<existing)await this.ctx.storage.setAlarm(next);
+  }
+  async materialRelay({owner,op,data,secret,message}) {
+    return this.ctx.blockConcurrencyWhile(async()=>{try{const relay=new MaterialRelay(this.store);return secret?await relay.request(owner,secret,message):await relay.manage(owner,op,data);}catch(error){return {ok:false,error:error.code||'relay_unavailable',status:error.status||503};}});
   }
   async populateDemo(owner) { return this.ctx.blockConcurrencyWhile(()=>populateDemo(this.store,owner)); }
   async dispatch(message) {
