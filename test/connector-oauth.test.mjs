@@ -6,11 +6,11 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createRuntime} from './runtime-fixture.mjs';
 
-test('real OAuth transport scopes, saves, resumes and revokes isolated workspaces',async t=>{
+for (const [provider,callback] of [['Claude','https://claude.ai/api/mcp/auth_callback'],['ChatGPT','https://chatgpt.com/connector/oauth/synthetic_callback_1234']]) test(provider+' real OAuth transport scopes, saves, resumes and revokes isolated workspaces',async t=>{
   const persistPath=await mkdtemp(join(tmpdir(),'bridge-pilot-'));
   let rt=await createRuntime({connector:true,persistPath});t.after(async()=>{await rt.close();await rm(persistPath,{recursive:true,force:true});});
   let edge=await rt.mf.getWorker('study-connector-test');
-  const origin='https://connector.example.invalid',resource=origin+'/mcp',callback='https://claude.ai/api/mcp/auth_callback';
+  const origin='https://connector.example.invalid',resource=origin+'/mcp';
   const owners={};
   const site=async(path,{student='a',body,status=200,...other}={})=>{
     const res=await rt.request(path,{student,...(body?{method:'POST',body}:{}),...other,headers:{'X-Workspace-Id':owners[student],...other.headers}});
@@ -39,7 +39,7 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
   const tokenRequest=body=>edge.fetch(origin+'/oauth/token',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
   const rpc=async(token,name,args)=>{const res=await edgePost('/mcp',{jsonrpc:'2.0',id:1,method:'tools/call',params:{name,arguments:args}},token);return res.json();};
   const value=r=>r.result?.structuredContent||r.result?.content?.[0]&&JSON.parse(r.result.content[0].text)||r;
-  const registration=await edgePost('/oauth/register',{client_name:'Synthetic Claude',redirect_uris:[callback],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'});
+  const registration=await edgePost('/oauth/register',{client_name:'Synthetic '+provider,redirect_uris:[callback],grant_types:['authorization_code','refresh_token'],response_types:['code'],token_endpoint_auth_method:'none'});
   const client=await registration.json();assert.equal(registration.status,201,JSON.stringify(client));
   async function authorize(student='a',write=true){
     const verifier=randomBytes(32).toString('base64url'),challenge=createHash('sha256').update(verifier).digest('base64url');
@@ -47,7 +47,7 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     const auth=await edge.fetch(origin+'/authorize?'+q,{redirect:'manual'});
     assert.equal(auth.status,302,await auth.clone().text());
     const ticket=new URL(auth.headers.get('location')).searchParams.get('request');
-    const info=await site('/api/ai-access/request?request='+ticket,{student});assert.equal(info.redirect_origin,'https://claude.ai');
+    const info=await site('/api/ai-access/request?request='+ticket,{student});assert.equal(info.redirect_origin,new URL(callback).origin);
     const approval=await site('/api/ai-access/approve',{student,body:{request:ticket,course_ids:['shared'],write}});
     const redirect=new URL(approval.redirect);assert.equal(redirect.searchParams.get('state'),q.get('state'));
     const tokenRes=await tokenRequest({grant_type:'authorization_code',client_id:client.client_id,code:redirect.searchParams.get('code'),redirect_uri:callback,code_verifier:verifier,resource});
@@ -55,8 +55,8 @@ test('real OAuth transport scopes, saves, resumes and revokes isolated workspace
     return {tokens,ticket,code:redirect.searchParams.get('code'),verifier};
   }
   const a=await authorize(),b=await authorize('b');
-  await t.test('Claude protocol metadata is accepted and notifications produce no response',async()=>{
-    const init=await edgePost('/mcp',{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'claude',version:'synthetic'},_meta:{'synthetic/tracing':'ignored'}}},a.tokens.access_token);
+  await t.test(provider+' protocol metadata is accepted and notifications produce no response',async()=>{
+    const init=await edgePost('/mcp',{jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:provider.toLowerCase(),version:'synthetic'},_meta:{'synthetic/tracing':'ignored'}}},a.tokens.access_token);
     assert.equal((await init.json()).result.serverInfo.name,'school-bridge-study');
     const listed=await edgePost('/mcp',{jsonrpc:'2.0',id:2,method:'tools/list',params:{_meta:{'synthetic/tracing':'ignored'}}},a.tokens.access_token);assert.equal((await listed.json()).result.tools.length,7);
     const notification=await edgePost('/mcp',{jsonrpc:'2.0',method:'notifications/initialized',params:{_meta:{}}},a.tokens.access_token);assert.equal(notification.status,202);assert.equal(await notification.text(),'');

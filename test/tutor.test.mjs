@@ -72,3 +72,21 @@ test('short source extracts stay intact while retrieval remains byte-bounded',()
 });
 
 test('archived sources block new inference without spending quota and remain blocked until restored',async t=>{const x=await unit(t);const write=async(archived,expectedRevision)=>x.store.dispatch({tenantId:tenant,op:'materials.put',data:{...material,archived},operationId:crypto.randomUUID(),expectedRevision});assert.equal((await write(true,1)).ok,true);await assert.rejects(()=>runTutor({...x,tenantId:tenant,data:packet()}),/tutor_material_not_found/);assert.equal(x.calls(),0);assert.equal(x.state.read(tenant,course.id).session.revision,0);assert.equal((await write(false,2)).ok,true);assert.equal((await runTutor({...x,tenantId:tenant,data:packet()})).state,'saved');assert.equal(x.calls(),1);});
+
+
+test('continuation keeps the newest assessed outcome after a corrected answer and later unassessed requests',()=>{
+ const sources=selectExcerpts([{...material,revision:1}],'safety');
+ const wrong={kind:'answer',question:'What does safety stock protect against?',text:'Every cost',outcome:'incorrect',assistance:'independent',at:'2026-10-14T12:00:00Z'};
+ const corrected={...wrong,text:'Demand and supply uncertainty',outcome:'correct',assistance:'hints',at:'2026-10-14T12:01:00Z'};
+ const session={turns:[wrong,corrected,...Array.from({length:8},()=>({kind:'teach',request:'Continue',text:'An unassessed lesson'}))],summary:{correct:0,assisted_correct:1,incorrect:1}};
+ const before=structuredClone(session),messages=tutorPrompt(session,'Continue',sources),payload=JSON.parse(messages[1].content);
+ assert.equal(payload.latest_assessed_answer.response,corrected.text);
+ assert.equal(payload.latest_assessed_answer.outcome,'correct');
+ assert.equal(payload.latest_assessed_answer.assistance,'hints');
+ assert.equal(payload.latest_assessed_answer.at,corrected.at);
+ assert.ok(payload.recent_history.every(t=>t.kind==='teach'));
+ assert.deepEqual(session,before);
+ const newerWrong={...wrong,text:'All costs again',at:'2026-10-14T12:02:00Z'};
+ assert.equal(JSON.parse(tutorPrompt({...session,turns:[...session.turns,newerWrong]},'Continue',sources)[1].content).latest_assessed_answer.outcome,'incorrect');
+ assert.equal(JSON.parse(tutorPrompt({turns:[]},'Start',sources)[1].content).latest_assessed_answer,null);
+});

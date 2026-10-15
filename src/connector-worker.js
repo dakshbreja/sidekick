@@ -3,8 +3,9 @@ import {DurableObject,WorkerEntrypoint} from 'cloudflare:workers';
 import {OAuthProvider,getOAuthApi,OAuthError} from '@cloudflare/workers-oauth-provider';
 import {json,readJSON} from './http.js';
 
+import {connectorProvider} from './connector-clients.js';
+
 const SCOPES=['study:read','study:write'];
-const CLAUDE_CALLBACK='https://claude.ai/api/mcp/auth_callback';
 const requestId=value=>typeof value==='string'&&/^[a-f0-9-]{36}$/.test(value);
 const pending=env=>env.CONNECTOR_REQUESTS.getByName('authorization-v1');
 function options(env) {
@@ -15,7 +16,7 @@ function options(env) {
     scopesSupported:SCOPES,requiredScopes:SCOPES,clientIdMetadataDocumentEnabled:false,
     resourceMetadata:{resource:origin+'/mcp',authorization_servers:[origin]},
     clientRegistrationCallback:({clientMetadata:m})=>{
-      if(!Array.isArray(m.redirect_uris)||m.redirect_uris.length!==1||m.redirect_uris[0]!==CLAUDE_CALLBACK)return {description:'This private pilot currently supports Claude only.'};
+      if(!Array.isArray(m.redirect_uris)||m.redirect_uris.length!==1||!connectorProvider(m.redirect_uris[0]))return {description:'This private pilot supports only approved Claude or ChatGPT callbacks.'};
     },
     tokenExchangeCallback:async({props})=>{
       const active=await env.BRIDGE.grantActive(props?.owner,props?.grantId);
@@ -33,9 +34,9 @@ function options(env) {
       if(request.method!=='GET'||new URL(request.url).pathname!=='/authorize')return json({error:'not_found'},404);
       const api=getOAuthApi(options(env),env);
       const auth=await api.parseAuthRequest(request);
-      if(auth.redirectUri!==CLAUDE_CALLBACK||auth.codeChallengeMethod!=='S256'||!auth.codeChallenge||!auth.scope.includes('study:read')||auth.scope.some(s=>!SCOPES.includes(s)))return json({error:'invalid_authorization_request'},400);
+      if(!connectorProvider(auth.redirectUri)||auth.codeChallengeMethod!=='S256'||!auth.codeChallenge||!auth.scope.includes('study:read')||auth.scope.some(s=>!SCOPES.includes(s)))return json({error:'invalid_authorization_request'},400);
       const client=await api.lookupClient(auth.clientId);
-      const ticket=await pending(env).create({auth,client_name:(client?.clientName||'Claude').slice(0,200)});
+      const ticket=await pending(env).create({auth,client_name:(client?.clientName||connectorProvider(auth.redirectUri)).slice(0,200)});
       return new Response(null,{status:302,headers:{Location:env.BRIDGE_ORIGIN+'/ai-access?request='+ticket,'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
     }}
   };
