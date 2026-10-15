@@ -42,7 +42,7 @@ export function readStudy(store, meta, op, data) {
 
 // Computed synchronously from the same student store on every read. This is a
 // Bridge-version comparison, not an assertion that the upstream portal is fresh.
-function checkStudySources(store,record,accountRevision) {
+export function checkStudySources(store,record,accountRevision) {
   const sources=(record?.sources??[]).map(ref=>{
     const material=store.getRecord('materials',ref.material_id);
     const available=Boolean(material&&!material.archived&&material.course_id===record.course_id);

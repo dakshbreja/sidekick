@@ -86,14 +86,15 @@ export function validateWrite(op, data) {
       return {kind:'study_sessions',id:`${value.course_id}:${value.session_id}`,value};
     }
     case 'assignments.put': {
-      object(data,['id','course_id','title','due_at','all_day']);
+      object(data,['id','course_id','title','due_at','all_day','work_kind']);
       if(typeof data.all_day!=='boolean')fail('invalid_event');
       if(typeof data.id==='string'&&data.id.startsWith('school_'))fail('reserved_assignment_id');
       const value={id:id(data.id),course_id:courseId(data.course_id),title:string(data.title,200),due_at:timestamp(data.due_at),all_day:data.all_day};
+      if(data.work_kind!==undefined)value.work_kind=enumeration(data.work_kind,['assignment','project','exam']);
       return {kind:'assignments',id:value.id,value};
     }
     case 'profile.put': {
-      object(data, ['display_name', 'timezone', 'consent_version', 'institution', 'school_email', 'study_goals', 'learning_preferences']);
+      object(data, ['display_name', 'timezone', 'consent_version', 'institution', 'school_email', 'study_goals', 'learning_preferences', 'preferred_name', 'study_session_minutes', 'exam_prep_days', 'exam_target_percent']);
       const value = { display_name: string(data.display_name, 100), timezone: timezone(data.timezone), consent_version: string(data.consent_version, 50) };
       // Preserve the original fingerprint for queued v1 saves: absent additions
       // stay absent. These self-reported fields never grant school access.
@@ -104,6 +105,10 @@ export function validateWrite(op, data) {
       }
       for (const field of ['study_goals', 'learning_preferences']) {
         if (data[field] !== undefined) value[field] = string(data[field], 2000, { empty: true, multiline: true });
+      }
+      if(data.preferred_name!==undefined)value.preferred_name=string(data.preferred_name,80,{empty:true});
+      for(const [field,min,max] of [['study_session_minutes',10,90],['exam_prep_days',1,30],['exam_target_percent',1,100]]){
+        if(data[field]!==undefined){if(data[field]!==null&&(!Number.isSafeInteger(data[field])||data[field]<min||data[field]>max))fail('invalid_study_preference');value[field]=data[field];}
       }
       return { kind: 'profile', id: 'profile', value };
     }

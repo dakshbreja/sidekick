@@ -2,6 +2,14 @@
 
 Status date: October 14, 2026.
 
+## Sidekick personal dashboard — October 14, 2026
+
+The owner chose **Sidekick** as the working product name. A personal welcome, explainable deadline priorities, optional study pace/preparation window/target and a reviewed ChatGPT/Claude handoff now sit above the daily dashboard. The exact target course opens in the tutor. The read-only `/demo` shows fictional John Doe without creating records. Normal recommendations exclude simulated study checkpoints and reported submitted requirements; saved-source changes require refresh before continuing. The score target is chosen, not predicted from grades. Provider grants, paid fallback and private-host access are unchanged.
+
+Validation: 386 automated checks passed, including five new planning/privacy checks and signed-owner separation through actual workerd/SQLite; privacy scan including the external private-reference denylist, plugin audit, dry-run and executable bundle passed. The hosted browser displayed the fictional exam/project/preferences, generated a fictional-only handoff, preserved the existing operator profile, and opened the exact dashboard course with its existing tutor session and counts. Optional preference controls rendered without changing that profile. Local browser navigation was blocked by the client; no local visual check is claimed. A final wording correction removed real-record verification/save instructions from the fictional handoff and clarified pending feed checks; focused tests and build/bundle were rerun afterward.
+
+See [PERSONALIZATION.md](PERSONALIZATION.md) for the collection path and boundaries. No new live AI lesson, eLC source, student enrollment, full-portal sweep, rubric comparison or cross-chat access was added. This milestone does not claim general public-launch readiness.
+
 ## ChatGPT connector and tutor chronology — October 14, 2026
 
 The private OAuth edge now admits the documented ChatGPT HTTPS callback paths alongside Claude, with the same single registered redirect, S256 PKCE, exact resource audience, selected-course grant, owner-derived identity and immediate revocation. The website consent return link shares the callback validator and names the actual provider. The prepared study continuation is now labeled for ChatGPT or Claude; it still sends nothing automatically.

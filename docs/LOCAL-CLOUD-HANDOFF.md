@@ -11,6 +11,10 @@ The owner requested this existing local chat to handle Mac/browser setup while r
 
 The local branch starts at cloud commit `1dc5d248d1654a6fd47c2736dfb42f1feadfbd92`, incorporating recovery PR #1, private sign-in preparation PR #2 and plugin PR #3. All three PRs remain open and unmerged. Local work must push its own branch, never overwrite a cloud branch or implicitly merge into main. Fetch and review new commits before transferring later changes. Credentials, browser sessions and runtime data do not travel between these environments through Git.
 
+## Latest local product checkpoint — Sidekick, October 14, 2026
+
+The working name is Sidekick. The latest local branch adds a per-owner personal dashboard and read-only fictional `/demo`; see STATUS.md and PERSONALIZATION.md. Fetch this branch before future cloud work. Do not copy John’s fictional preview into real profiles or treat simulation checkpoints as learner progress. Preserve existing connector identifiers/hostnames and selected-course consent. Existing live ChatGPT/Claude test grants remain revoked. Deeper eLC collection still needs a scoped live feed setup or approved institutional OAuth; no new collection authority is implied by the demo. The earlier pilot-smoke request below is historical and was completed by PR #6.
+
 ## Current continuation — October 14, 2026
 
 The owner requested moving ongoing work back to the existing cloud chat before laptop closure. Fetch `origin/codex/local-community-20261012` at this checkpoint and create a new continuation branch from it. Do not resume from the old calendar branch or repeat the historical provider setup below. The private website, Google Calendar and scoped Claude connector are deployed; current evidence and explicit limits are at the top of STATUS.md. The live source-gap, assistance-preservation, save/receipt and fresh-chat regression passed; its temporary grant is revoked. No live credentials, browser sessions or private evidence are included in Git.

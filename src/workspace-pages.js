@@ -1,6 +1,6 @@
 import {TUTOR_PAGE} from './tutor-ui.js';
 // Copyright 2026 Daksh Breja. All rights reserved.
-export const APP_PATHS=['/','/dashboard','/notes','/learning','/tutor','/calendar','/onboarding','/onboarding/profile','/onboarding/courses','/onboarding/connections','/onboarding/demo','/settings'];
+export const APP_PATHS=['/','/dashboard','/notes','/learning','/tutor','/calendar','/onboarding','/onboarding/profile','/onboarding/courses','/onboarding/connections','/onboarding/demo','/settings','/demo'];
 export const WORKSPACE_NAV=`<nav aria-label="Everyday workspace" class="workspace-nav"><a href="/dashboard">Dashboard</a><a href="/notes">Notes</a><a href="/learning">Learning</a><a href="/tutor">Tutor</a><a href="/calendar">Calendar</a><span class="nav-divider"></span><a href="/onboarding/profile">Setup</a><a href="/onboarding/connections">Connections</a><a href="/settings">Settings</a></nav>
 <section id="onboarding-nav" class="setup-steps" hidden><div class="section-top"><p class="eyebrow">SET UP ONCE. RETURN WHEN THINGS CHANGE.</p><a href="/onboarding/demo">Try the sample walkthrough</a></div><nav aria-label="Setup steps"><a href="/onboarding/profile">1 · Profile</a><a href="/onboarding/courses">2 · Courses</a><a href="/onboarding/connections">3 · Connections</a></nav><p id="setup-progress" class="hint"></p></section>
 <section id="dashboard-start" class="card" hidden><h2>Make this your school day</h2><p>Add your profile and courses, then choose which sources to connect. Your workspace starts empty.</p><a class="button-link" href="/onboarding/profile">Start setup</a> <a href="/onboarding/demo">Preview onboarding</a></section>`;
@@ -10,6 +10,7 @@ ${TUTOR_PAGE}
 export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
   const $=s=>document.querySelector(s);
   const routes={
+    '/demo':{page:'personal-demo',title:'Welcome back, John!',description:'A fictional day with Sidekick. See how your goals, deadlines and saved progress shape a personal plan.'},
     '/dashboard':{page:'dashboard',title:'Your school day.',description:'Deadlines, instructor updates and a clear place to begin.'},
     '/notes':{page:'notes',title:'Your course library.',description:'Keep notes, course text and transcript exports together.'},
     '/learning':{page:'learning',title:'Learning that builds on you.',description:'Your study preferences and explicitly saved learning progress.'},
@@ -33,7 +34,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
     for(const element of document.querySelectorAll('[data-page-section]'))element.hidden=!element.dataset.pageSection.split(' ').includes(route.page);
     $('#onboarding-nav').hidden=!['profile','courses','connections'].includes(route.page);
     $('#dashboard-start').hidden=route.page!=='dashboard'||!workspace()||Boolean(workspace().profile)||workspace().deleted;
-    $('#page-title').textContent=route.title;$('#page-description').textContent=route.description;document.title=route.title.replace(/\.$/,'')+' · School Bridge';
+    $('#page-title').textContent=route.page==='dashboard'&&workspace()?.profile?'Welcome back, '+(workspace().profile.preferred_name||workspace().profile.display_name)+'!':route.title;$('#page-description').textContent=route.description;document.title=route.title.replace(/\.$/,'')+' · Sidekick';
     for(const link of document.querySelectorAll('nav a')){if(new URL(link.href).pathname===path)link.setAttribute('aria-current','page');else link.removeAttribute('aria-current');}
     if(focus){$('#page-title').focus({preventScroll:true});window.scrollTo(0,0);}
   }
@@ -66,7 +67,7 @@ export function createWorkspacePages({api,row,notice,workspace,assertOwner}){
       const summary=result.course_summary;row(box,'Recorded evidence',summary.independent_observed_correct+' independently correct · '+summary.assisted_observed_correct+' correct with assistance · '+summary.observed_partial+' partial · '+summary.observed_incorrect+' incorrect. These counts cover saved observations only.');
     }catch(error){if(generation===learningGeneration)notice(error.message,true);}finally{button.disabled=false;}
   });
-  const samples=[['1 · Your profile','Choose your name, time zone and optional study preferences.','Example student: Alex · America/New_York · “Practice questions, then a worked example.”'],['2 · Your courses','Add the classes and terms you want to organize.','Example course: BIO 101 · Section A · Sample fall term'],['3 · Your connections','Choose a calendar or course feed and give permission separately. You can also begin with manual notes.','Sample only: no account access requested. Your own dashboard will use only the sources you actually connect.']];let sample=0;
+  const samples=[['1 · Your profile','Choose your name, time zone and optional study preferences.','Example student: John · America/New_York · “Practice questions, then a worked example.”'],['2 · Your courses','Add the classes and terms you want to organize.','Example course: BIO 101 · Section A · Sample fall term'],['3 · Your connections','Choose a calendar or course feed and give permission separately. You can also begin with manual notes.','Sample only: no account access requested. Your own dashboard will use only the sources you actually connect.']];let sample=0;
   function demo(){const [title,description,example]=samples[sample];$('#demo-title').textContent=title;$('#demo-description').textContent=description;$('#demo-example').textContent=example;$('#demo-back').disabled=sample===0;$('#demo-next').textContent=sample===2?'Start again':'Next step';}
   $('#demo-back').addEventListener('click',()=>{sample=Math.max(0,sample-1);demo();});$('#demo-next').addEventListener('click',()=>{sample=(sample+1)%samples.length;demo();});
   demo();renderRoute();return {update,navigate,clear(){++learningGeneration;$('#learning-handoff').replaceChildren();$('#learning-preferences').replaceChildren();$('#tutor-readiness').replaceChildren();$('#dashboard-start').hidden=true;}};
